@@ -244,9 +244,15 @@ cd sentinel-log-shield
 # Install dependencies
 pip install -r requirements.txt
 
-# Set OpenAI API key
-export OPENAI_API_KEY="sk-..."
+# Set HF_TOKEN (Hackathon Setup - REQUIRED)
+export HF_TOKEN="hf_..."  # Get from https://huggingface.co/settings/tokens
+
+# Optional: Override API endpoint/model
+export API_BASE_URL="https://api-inference.huggingface.co/openai/"
+export MODEL_NAME="meta-llama/Llama-2-70b-chat-hf"
 ```
+
+> **For HF Spaces**: Set HF_TOKEN in Space Settings → Repository Secrets
 
 ### 2. Start Server
 
