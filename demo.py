@@ -47,38 +47,11 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
 
     # Initialize environment
     env = LogSanitizerEnvironment()
-    output_lines = []
+    step_summaries = []
 
     # Reset environment
     reset_resp = env.reset()
     observation = reset_resp.observation
-
-    output_lines.append(
-        format_output(
-            f"╔════════════════════════════════════════════════════════╗",
-            BLUE,
-        )
-    )
-    output_lines.append(
-        format_output(f"║  Sentinel-Log-Shield: Real-Time Demo                 ║", BLUE)
-    )
-    output_lines.append(
-        format_output(
-            f"╚════════════════════════════════════════════════════════╝",
-            BLUE,
-        )
-    )
-    output_lines.append("")
-
-    # Show task info
-    output_lines.append(
-        format_output(f"📋 Task: {observation.task.value}", BLUE)
-    )
-    output_lines.append(
-        format_output(f"🔍 Expected PII Types: {', '.join(observation.pii_types_expected)}", BLUE)
-    )
-    output_lines.append(format_output(f"📝 Raw Log:\n{observation.raw_log}", BLUE))
-    output_lines.append("")
 
     # Run 3 steps
     step_num = 0
@@ -88,13 +61,6 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
 
     while not done and step_num < total_steps:
         step_num += 1
-        output_lines.append(
-            format_output(f"{'─' * 60}", YELLOW)
-        )
-        output_lines.append(
-            format_output(f"🔄 STEP {step_num}/{total_steps}", YELLOW)
-        )
-
         # Simulate agent redaction (regex fallback mode)
         if task == TaskEnum.TASK_1:
             # Email & IPv4
@@ -170,11 +136,6 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
             
             redacted_log = log
 
-        # Show redactions found
-        output_lines.append(
-            format_output(f"✓ Found {len(redactions)} redactions: {', '.join([r['type'] for r in redactions])}", GREEN)
-        )
-
         # Create action and step
         action = RedactionAction(
             log_id=observation.log_id,
@@ -189,58 +150,75 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
         reward = step_resp.reward
         done = step_resp.done
 
-        # Show step result
-        output_lines.append(
-            format_output(
-                f"💰 Reward: {reward.total_reward:.2f} | "
-                f"F1: {reward.metrics['f1_score']:.2f} | "
-                f"Precision: {reward.metrics['precision']:.2f} | "
-                f"Recall: {reward.metrics['recall']:.2f}",
-                GREEN if reward.total_reward > 0 else RED,
-            )
-        )
-        output_lines.append(
-            format_output(f"💬 Feedback: {reward.feedback}", BLUE)
+        # Save neat per-step summary for table rendering
+        step_summaries.append(
+            {
+                "step": step_num,
+                "found": len(redactions),
+                "types": ", ".join([r["type"] for r in redactions]) if redactions else "-",
+                "reward": reward.total_reward,
+                "f1": reward.metrics["f1_score"],
+                "precision": reward.metrics["precision"],
+                "recall": reward.metrics["recall"],
+                "feedback": reward.feedback,
+            }
         )
 
         rewards.append(reward.total_reward)
 
-    # Final result
-    output_lines.append("")
-    output_lines.append(format_output(f"{'═' * 60}", BLUE))
-
     final_score = sum(rewards) / len(rewards) if rewards else 0.0
     success = final_score >= 0.70
-
-    status_emoji = "✅" if success else "⚠️"
-    status_color = GREEN if success else YELLOW
-
-    output_lines.append(
-        format_output(
-            f"{status_emoji} EPISODE COMPLETE",
-            status_color,
+    rows = []
+    for item in step_summaries:
+        rows.append(
+            "<tr>"
+            f"<td>{item['step']}</td>"
+            f"<td>{item['found']}</td>"
+            f"<td>{item['types']}</td>"
+            f"<td>{item['reward']:.2f}</td>"
+            f"<td>{item['f1']:.2f}</td>"
+            f"<td>{item['precision']:.2f}</td>"
+            f"<td>{item['recall']:.2f}</td>"
+            "</tr>"
         )
-    )
-    output_lines.append(
-        format_output(
-            f"   Steps: {step_num} | Score: {final_score:.2f} | Success: {'YES' if success else 'NO'}",
-            status_color,
-        )
-    )
-    output_lines.append(
-        format_output(f"   Rewards: {', '.join([f'{r:.2f}' for r in rewards])}", status_color)
-    )
-    output_lines.append(format_output(f"{'═' * 60}", BLUE))
+    output_html = f"""
+    <div style="padding:10px 12px;">
+      <h3 style="margin:0 0 8px 0; color:#f3f5f8;">Episode Results</h3>
+      <p style="margin:0 0 10px 0; color:#b8c0cc;">
+        <strong>Task:</strong> {observation.task.value} &nbsp;|&nbsp;
+        <strong>Expected:</strong> {", ".join(observation.pii_types_expected)}
+      </p>
+      <p style="margin:0 0 10px 0; color:#b8c0cc;"><strong>Raw Log:</strong> {observation.raw_log}</p>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+          <thead>
+            <tr style="background:#0f141c; color:#dfe4ef;">
+              <th style="padding:8px; border:1px solid rgba(255,255,255,0.10);">Step</th>
+              <th style="padding:8px; border:1px solid rgba(255,255,255,0.10);">Found</th>
+              <th style="padding:8px; border:1px solid rgba(255,255,255,0.10);">Types</th>
+              <th style="padding:8px; border:1px solid rgba(255,255,255,0.10);">Reward</th>
+              <th style="padding:8px; border:1px solid rgba(255,255,255,0.10);">F1</th>
+              <th style="padding:8px; border:1px solid rgba(255,255,255,0.10);">Precision</th>
+              <th style="padding:8px; border:1px solid rgba(255,255,255,0.10);">Recall</th>
+            </tr>
+          </thead>
+          <tbody>
+            {"".join(rows)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    """
 
     # Create status message
     status_msg = (
-        f"<h2 style='color:{GREEN if success else RED}'>{'✅ SUCCESS' if success else '⚠️ NEEDS IMPROVEMENT'}</h2>"
-        f"<p><strong>Final Score:</strong> {final_score:.2f}/1.00</p>"
-        f"<p><strong>Episodes Run:</strong> {len(rewards)}</p>"
-        f"<p><strong>Average Reward:</strong> {final_score:.2f}</p>"
+        f"<h3 style='margin:0; color:{GREEN if success else RED};'>"
+        f"{'Success' if success else 'Needs Improvement'}</h3>"
+        f"<p style='margin:.4rem 0;'>Final Score: <strong>{final_score:.2f}</strong>/1.00</p>"
+        f"<p style='margin:.2rem 0;'>Steps: {step_num}</p>"
     )
 
-    return "\n".join(output_lines), status_msg, final_score
+    return output_html, status_msg, final_score
 
 
 def create_demo():
