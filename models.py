@@ -179,7 +179,7 @@ class Reward(BaseModel):
     total_reward: float = Field(
         ..., description="Sum of all reward components"
     )
-    metrics: Dict[str, float] = Field(
+    metrics: Dict[str, Any] = Field(
         default_factory=dict,
         description="Detailed metrics: precision, recall, f1, discovery_rate, etc."
     )
