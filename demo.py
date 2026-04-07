@@ -246,10 +246,7 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
 def create_demo():
     """Create Gradio interface."""
 
-    with gr.Blocks(
-        title="Sentinel-Log-Shield: OpenEnv Demo",
-        theme=gr.themes.Soft(),
-    ) as demo:
+    with gr.Blocks(title="Sentinel-Log-Shield: OpenEnv Demo") as demo:
 
         # Header
         gr.Markdown(
@@ -397,6 +394,7 @@ if __name__ == "__main__":
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860,
+        theme=gr.themes.Soft(),
         show_error=True,
         share=False,
     )

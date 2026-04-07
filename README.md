@@ -1,3 +1,15 @@
+---
+title: Sentinel-Log-Shield OpenEnv Demo
+emoji: 🔐
+colorFrom: indigo
+colorTo: purple
+sdk: gradio
+sdk_version: "4.19.2"
+python_version: "3.10"
+app_file: demo.py
+pinned: false
+---
+
 # 🔐 Sentinel-Log-Shield: Enterprise PII Redaction Environment
 
 > **An OpenEnv Framework implementation for intelligent log sanitization with risk-aware token detection**
@@ -31,11 +43,11 @@
 
 Modern enterprise systems generate **terabytes of unstructured logs** containing critical PII:
 
-| Risk Category      | Examples                             | Impact                          |
-| ------------------ | ------------------------------------ | ------------------------------- |
-| **Credentials**    | API keys (sk-_, hf\__), OAuth tokens | Immediate system breach         |
-| **Identity**       | Email addresses, usernames, IDs      | Account takeover, impersonation |
-| **Sensitive Data** | Database credentials, passwords      | Unauthorized data access        |
+| Risk Category      | Examples                               | Impact                          |
+| ------------------ | -------------------------------------- | ------------------------------- |
+| **Credentials**    | API keys (sk-\_, hf\_\_), OAuth tokens | Immediate system breach         |
+| **Identity**       | Email addresses, usernames, IDs        | Account takeover, impersonation |
+| **Sensitive Data** | Database credentials, passwords        | Unauthorized data access        |
 
 **Current Solutions Fall Short:**
 
@@ -447,7 +459,7 @@ Result:   Correctly identifies contextual username
 
 | Aspect                  | Capability                                     |
 | ----------------------- | ---------------------------------------------- |
-| **Token Recognition**   | sk-_, hf\__, github\_\*, AWS AKIA patterns     |
+| **Token Recognition**   | sk-\_, hf\_\_, github\_\*, AWS AKIA patterns   |
 | **Risk Classification** | CRITICAL (immediate threat), HIGH, MEDIUM, LOW |
 | **False Negative Rate** | ~0% (critical to not miss secrets)             |
 | **Fallback Stability**  | Works without API key                          |
@@ -630,7 +642,7 @@ MIT License - Use freely for educational and commercial purposes
 
 ## ✨ Key Innovations
 
-1. **Risk-Aware Detection**: Not all secrets are equal. CRITICAL tokens (sk-_, hf\__) are prioritized.
+1. **Risk-Aware Detection**: Not all secrets are equal. CRITICAL tokens (sk-\_, hf\_\_) are prioritized.
 2. **Graceful Degradation**: Works perfectly with or without API key.
 3. **Progressive Difficulty**: Tasks 1→2→3 build understanding from regex to context to security.
 4. **Explainable Rewards**: Judges can verify scoring logic with detailed metrics.
