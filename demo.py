@@ -296,7 +296,6 @@ Select a task and watch the agent work in real-time:
         with gr.Row():
             with gr.Column():
                 output_display = gr.HTML(
-                    label="📊 Episode Output",
                     value=format_output(
                         "Click 'Run Demo' to start...",
                         BLUE,
@@ -307,7 +306,6 @@ Select a task and watch the agent work in real-time:
         with gr.Row():
             with gr.Column():
                 status_display = gr.HTML(
-                    label="🎯 Result",
                     value="<p>Ready to run...</p>",
                 )
             with gr.Column():
