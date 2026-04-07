@@ -317,6 +317,7 @@ async def custom_swagger_ui_html():
         b"</head>",
         (f"<style>{custom_css}</style>\n</head>").encode("utf-8"),
     )
+    response.headers["content-length"] = str(len(response.body))
     return response
 
 

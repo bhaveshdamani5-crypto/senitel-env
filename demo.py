@@ -11,8 +11,6 @@ Provides a web interface for Hugging Face Spaces with:
 import gradio as gr
 import sys
 import os
-import json
-import time
 from env import LogSanitizerEnvironment, TaskEnum
 from models import RedactionAction
 
@@ -21,36 +19,6 @@ GREEN = "#4CAF50"
 RED = "#f44336"
 BLUE = "#2196F3"
 YELLOW = "#FFC107"
-
-
-def _debug_log(run_id: str, hypothesis_id: str, location: str, message: str, data: dict) -> None:
-    """Append one NDJSON debug line for runtime evidence collection."""
-    payload = {
-        "sessionId": "ae233e",
-        "runId": run_id,
-        "hypothesisId": hypothesis_id,
-        "location": location,
-        "message": message,
-        "data": data,
-        "timestamp": int(time.time() * 1000),
-    }
-    try:
-        with open("debug-ae233e.log", "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
-    except Exception:
-        # Debug logging must never break the demo flow.
-        pass
-
-
-# #region agent log
-_debug_log(
-    run_id="baseline",
-    hypothesis_id="H5",
-    location="demo.py:module_import",
-    message="Demo module imported",
-    data={"file": __file__},
-)
-# #endregion
 
 
 def format_output(text: str, color: str = "white") -> str:
@@ -76,15 +44,6 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
     }
 
     task = task_map.get(task_choice, TaskEnum.TASK_1)
-    # #region agent log
-    _debug_log(
-        run_id="baseline",
-        hypothesis_id="H2",
-        location="demo.py:run_demo_episode:task_map",
-        message="Mapped selected UI task",
-        data={"task_choice": task_choice, "mapped_task": task.value},
-    )
-    # #endregion
 
     # Initialize environment
     env = LogSanitizerEnvironment()
@@ -93,15 +52,6 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
     # Reset environment
     reset_resp = env.reset()
     observation = reset_resp.observation
-    # #region agent log
-    _debug_log(
-        run_id="baseline",
-        hypothesis_id="H2",
-        location="demo.py:run_demo_episode:after_reset",
-        message="Observed task after reset",
-        data={"observation_task": observation.task.value, "log_id": observation.log_id},
-    )
-    # #endregion
 
     # Run 3 steps
     step_num = 0
@@ -199,20 +149,6 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
         observation = step_resp.observation
         reward = step_resp.reward
         done = step_resp.done
-        # #region agent log
-        _debug_log(
-            run_id="baseline",
-            hypothesis_id="H3",
-            location="demo.py:run_demo_episode:step_loop",
-            message="Step executed",
-            data={
-                "step_num": step_num,
-                "reward": reward.total_reward,
-                "done": done,
-                "redactions_found": len(redactions),
-            },
-        )
-        # #endregion
 
         # Save neat per-step summary for table rendering
         step_summaries.append(
@@ -232,15 +168,6 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
 
     final_score = sum(rewards) / len(rewards) if rewards else 0.0
     success = final_score >= 0.70
-    # #region agent log
-    _debug_log(
-        run_id="baseline",
-        hypothesis_id="H1",
-        location="demo.py:run_demo_episode:episode_end",
-        message="Episode completion status",
-        data={"step_count": step_num, "done_flag": done, "final_score": final_score},
-    )
-    # #endregion
     rows = []
     for item in step_summaries:
         rows.append(
@@ -282,19 +209,6 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
       </div>
     </div>
     """
-    # #region agent log
-    _debug_log(
-        run_id="baseline",
-        hypothesis_id="H1",
-        location="demo.py:run_demo_episode:render_output",
-        message="Rendered output HTML markers",
-        data={
-            "contains_start_marker": "[START]" in output_html,
-            "contains_step_marker": "[STEP]" in output_html,
-            "contains_end_marker": "[END]" in output_html,
-        },
-    )
-    # #endregion
 
     # Create status message
     status_msg = (
@@ -303,30 +217,12 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
         f"<p style='margin:.4rem 0; color:#eef2ff;'>Final Score: <strong>{final_score:.2f}</strong>/1.00</p>"
         f"<p style='margin:.2rem 0; color:#d8deea;'>Steps: {step_num}</p>"
     )
-    # #region agent log
-    _debug_log(
-        run_id="baseline",
-        hypothesis_id="H4",
-        location="demo.py:run_demo_episode:return_payload",
-        message="Demo function return summary",
-        data={"status_has_success_word": "Success" in status_msg, "final_score": final_score},
-    )
-    # #endregion
 
     return output_html, status_msg, final_score
 
 
 def create_demo():
     """Create Gradio interface with simple, clean styling."""
-    # #region agent log
-    _debug_log(
-        run_id="baseline",
-        hypothesis_id="H5",
-        location="demo.py:create_demo:entry",
-        message="create_demo invoked",
-        data={"note": "Gradio Blocks construction starting"},
-    )
-    # #endregion
     premium_css = """
     .gradio-container {
       font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif !important;
