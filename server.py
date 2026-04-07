@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import gradio as gr
 import logging
 import subprocess
+from html import escape
 from env import LogSanitizerEnvironment
 from models import RedactionAction, ResetResponse, StepResponse, EnvironmentState
 from demo import create_demo
@@ -403,27 +404,86 @@ async def health_check():
         "cumulative_reward": env.cumulative_reward
     }
 
+def _execute_tests() -> dict:
+    """Run test suite with pytest first, then unittest fallback."""
+    commands = [
+        ("pytest", ["python", "-m", "pytest", "-q", "tests"]),
+        ("unittest", ["python", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py", "-v"]),
+    ]
+    last_error = None
+    for runner, cmd in commands:
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=180,
+                check=False,
+            )
+            output = (result.stdout or "") + ("\n" + result.stderr if result.stderr else "")
+            return {
+                "runner": runner,
+                "status": "passed" if result.returncode == 0 else "failed",
+                "exit_code": result.returncode,
+                "output": output.strip(),
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "runner": runner,
+                "status": "failed",
+                "exit_code": 124,
+                "output": "Test run timed out after 180 seconds",
+            }
+        except Exception as exc:
+            last_error = str(exc)
+
+    return {
+        "runner": "none",
+        "status": "failed",
+        "exit_code": 1,
+        "output": f"Unable to execute tests: {last_error or 'unknown error'}",
+    }
+
+
 @app.get("/run-tests")
-async def run_tests():
-    """Run the repository test suite and return summarized output."""
-    try:
-        result = subprocess.run(
-            ["python", "-m", "pytest", "-q", "tests"],
-            capture_output=True,
-            text=True,
-            timeout=180,
-            check=False,
-        )
-        output = (result.stdout or "") + ("\n" + result.stderr if result.stderr else "")
-        return {
-            "status": "passed" if result.returncode == 0 else "failed",
-            "exit_code": result.returncode,
-            "output": output.strip(),
-        }
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=500, detail="Test run timed out after 180 seconds")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Unable to execute tests: {str(e)}")
+async def run_tests(format: str = "html"):
+    """Run test suite and return HTML report (or JSON with ?format=json)."""
+    result = _execute_tests()
+    if format == "json":
+        return result
+
+    ok = result["status"] == "passed"
+    color = "#22c55e" if ok else "#ef4444"
+    return HTMLResponse(
+        f"""
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sentinel Test Suite</title>
+  <style>
+    body {{ font-family: Inter, Segoe UI, system-ui, sans-serif; margin: 0; background:#0f1117; color:#eef2ff; }}
+    .wrap {{ max-width: 980px; margin: 0 auto; padding: 20px; }}
+    .card {{ border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 16px; background:#151a24; }}
+    pre {{ background:#0b0f17; border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:12px; overflow:auto; white-space:pre-wrap; }}
+    .status {{ color:{color}; font-weight:700; }}
+    a {{ color:#93c5fd; }}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card">
+      <h2 style="margin:0 0 8px 0;">Space Test Suite</h2>
+      <p style="margin:0 0 10px 0;">Runner: <strong>{escape(result["runner"])}</strong> | Exit: <strong>{result["exit_code"]}</strong> | Status: <span class="status">{escape(result["status"])}</span></p>
+      <p style="margin:0 0 14px 0;"><a href="/run-tests?format=json">View JSON output</a></p>
+      <pre>{escape(result["output"])}</pre>
+    </section>
+  </main>
+</body>
+</html>
+        """
+    )
 
 
 # Mount Gradio demo under /demo while keeping FastAPI docs at /docs
