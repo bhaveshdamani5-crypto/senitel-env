@@ -11,7 +11,6 @@ Provides a web interface for Hugging Face Spaces with:
 import gradio as gr
 import sys
 import os
-import subprocess
 from env import LogSanitizerEnvironment, TaskEnum
 from models import RedactionAction
 
@@ -245,278 +244,61 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
 
 
 def create_demo():
-    """Create Gradio interface."""
-    try:
-        build_sha = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            text=True,
-        ).strip()
-    except Exception:
-        build_sha = "unknown"
+    """Create Gradio interface with simple, clean styling."""
     premium_css = """
-    :root {
-      --background-deep: #020203;
-      --background-base: #050506;
-      --background-elevated: #0a0a0c;
-      --surface: rgba(255,255,255,0.05);
-      --surface-hover: rgba(255,255,255,0.08);
-      --foreground: #EDEDEF;
-      --foreground-muted: #8A8F98;
-      --foreground-subtle: rgba(255,255,255,0.60);
-      --accent: #5E6AD2;
-      --accent-bright: #6872D9;
-      --accent-glow: rgba(94,106,210,0.3);
-      --border-default: rgba(255,255,255,0.06);
-      --border-hover: rgba(255,255,255,0.10);
-    }
-
     .gradio-container {
-      position: relative;
-      background:
-        radial-gradient(ellipse at top, #0a0a0f 0%, #050506 50%, #020203 100%),
-        linear-gradient(180deg, #050506, #020203) !important;
-      color: var(--foreground) !important;
-      font-family: Inter, "Geist Sans", system-ui, sans-serif !important;
-      overflow-x: hidden;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif !important;
+      background: #0f1117 !important;
+      color: #e6e8ee !important;
     }
-
-    .gradio-container::before,
-    .gradio-container::after {
-      content: "";
-      position: fixed;
-      z-index: 0;
-      width: 1000px;
-      height: 1400px;
-      filter: blur(150px);
-      pointer-events: none;
-      opacity: 0.22;
-      animation: floatAmbient 10s ease-in-out infinite;
-    }
-    .gradio-container::before {
-      top: -45%;
-      left: 35%;
-      background: radial-gradient(circle, rgba(94,106,210,0.95) 0%, rgba(94,106,210,0.0) 70%);
-    }
-    .gradio-container::after {
-      top: -30%;
-      left: -30%;
-      background: radial-gradient(circle, rgba(126,90,255,0.45) 0%, rgba(126,90,255,0) 70%);
-      animation-delay: -4s;
-    }
-
-    .gradio-container .main,
-    .gradio-container .wrap {
-      position: relative;
-      z-index: 1;
-    }
-
     .gradio-container .block,
     .gradio-container .panel,
     .gradio-container .form {
-      border: 1px solid var(--border-default) !important;
-      background: linear-gradient(to bottom, rgba(255,255,255,0.08), rgba(255,255,255,0.02)) !important;
-      border-radius: 16px !important;
-      backdrop-filter: blur(12px);
-      box-shadow:
-        0 0 0 1px rgba(255,255,255,0.06),
-        0 2px 20px rgba(0,0,0,0.4),
-        0 0 40px rgba(0,0,0,0.2);
-      transition: border-color .24s cubic-bezier(.16,1,.3,1), transform .24s cubic-bezier(.16,1,.3,1), box-shadow .24s cubic-bezier(.16,1,.3,1);
+      border: 1px solid rgba(255,255,255,0.10) !important;
+      border-radius: 12px !important;
+      background: #161b22 !important;
+      box-shadow: none !important;
     }
-    .spotlight-card {
-      position: relative;
-      overflow: hidden;
-    }
-    .spotlight-card::before {
-      content: "";
-      position: absolute;
-      inset: -1px;
-      pointer-events: none;
-      opacity: 0;
-      background: radial-gradient(
-        300px circle at var(--spot-x, 50%) var(--spot-y, 50%),
-        rgba(94,106,210,0.15),
-        rgba(94,106,210,0.0) 60%
-      );
-      transition: opacity .24s cubic-bezier(.16,1,.3,1);
-    }
-    .spotlight-card:hover::before {
-      opacity: 1;
-    }
-
-    .gradio-container .block:hover,
-    .gradio-container .panel:hover {
-      border-color: var(--border-hover) !important;
-      transform: translateY(-4px);
-      box-shadow:
-        0 0 0 1px rgba(255,255,255,0.10),
-        0 8px 40px rgba(0,0,0,0.5),
-        0 0 80px rgba(94,106,210,0.10);
-    }
-
     .gradio-container .prose,
     .gradio-container .prose p,
     .gradio-container label {
-      color: var(--foreground-muted) !important;
+      color: #b8c0cc !important;
     }
-
     .gradio-container .prose h1,
     .gradio-container .prose h2,
     .gradio-container .prose h3 {
-      color: var(--foreground) !important;
+      color: #f3f5f8 !important;
     }
-
     .gradio-container button.primary {
-      background: var(--accent) !important;
+      background: #5E6AD2 !important;
       color: #fff !important;
-      border: 0 !important;
+      border: none !important;
       border-radius: 10px !important;
       font-weight: 600 !important;
-      box-shadow:
-        0 0 0 1px rgba(94,106,210,0.5),
-        0 4px 12px rgba(94,106,210,0.3),
-        inset 0 1px 0 0 rgba(255,255,255,0.2) !important;
-      transition: all .22s cubic-bezier(.16,1,.3,1) !important;
     }
     .gradio-container button.primary:hover {
-      background: var(--accent-bright) !important;
-      transform: translateY(-2px) !important;
-      box-shadow:
-        0 0 0 1px rgba(94,106,210,0.62),
-        0 8px 18px rgba(94,106,210,0.35),
-        0 0 34px rgba(94,106,210,0.25),
-        inset 0 1px 0 0 rgba(255,255,255,0.25) !important;
+      background: #6872D9 !important;
     }
-    .gradio-container button.primary:active {
-      transform: scale(0.98) !important;
-    }
-
     .gradio-container input,
     .gradio-container textarea,
     .gradio-container select {
-      background: #0f1014 !important;
-      color: var(--foreground) !important;
-      border: 1px solid rgba(255,255,255,0.10) !important;
+      background: #0f141c !important;
+      color: #e6e8ee !important;
+      border: 1px solid rgba(255,255,255,0.12) !important;
       border-radius: 10px !important;
     }
-    .gradio-container input:focus,
-    .gradio-container textarea:focus,
-    .gradio-container select:focus {
-      border-color: rgba(94,106,210,0.65) !important;
-      box-shadow: 0 0 0 2px rgba(94,106,210,0.28) !important;
-    }
-
-    .hero {
-      padding: 1.2rem 0.2rem 0.8rem;
-      transform: translateY(var(--hero-y, 0px)) scale(var(--hero-scale, 1));
-      opacity: var(--hero-opacity, 1);
-      transition: transform .1s linear, opacity .1s linear;
-    }
-    .hero-kicker {
-      font-size: .72rem;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--foreground-subtle);
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      margin-bottom: .8rem;
-    }
     .hero-title {
-      font-size: clamp(2rem, 5vw, 4.2rem);
-      margin: 0 0 .6rem;
-      line-height: 1.05;
-      font-weight: 600;
-      letter-spacing: -0.03em;
-      background: linear-gradient(to bottom, #fff 0%, rgba(255,255,255,0.94) 50%, rgba(255,255,255,0.70) 100%);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-    }
-    .hero-title-accent {
-      background: linear-gradient(90deg, #5E6AD2, #95a0ff, #5E6AD2);
-      background-size: 200% 100%;
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-      animation: shimmer 6s linear infinite;
+      margin: 0;
+      font-size: clamp(1.8rem, 3vw, 2.4rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #f3f5f8;
     }
     .hero-sub {
-      max-width: 840px;
-      line-height: 1.7;
-      color: var(--foreground-muted);
-      margin: 0 0 1rem;
-      font-size: clamp(0.95rem, 2vw, 1.1rem);
-    }
-    .pill {
-      display: inline-block;
-      margin-right: .5rem;
-      margin-bottom: .5rem;
-      padding: .36rem .8rem;
-      border-radius: 999px;
-      border: 1px solid rgba(94,106,210,0.30);
-      color: #cfd5ff;
-      background: rgba(94,106,210,0.10);
-      font-size: .72rem;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    }
-
-    .mini-metrics {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(120px, 1fr));
-      gap: .75rem;
-      margin-top: 1rem;
-    }
-    .metric-card {
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.08);
-      background: rgba(255,255,255,0.03);
-      padding: .72rem .8rem;
-    }
-    .metric-card b {
-      display: block;
-      color: var(--foreground);
-      font-size: .95rem;
-      margin-bottom: .2rem;
-    }
-    .metric-card span {
-      color: var(--foreground-muted);
-      font-size: .78rem;
-      letter-spacing: .03em;
-      text-transform: uppercase;
-    }
-    .section-divider {
-      height: 1px;
-      margin: 1rem 0 1.2rem;
-      background: linear-gradient(to right, transparent, rgba(255,255,255,0.12), transparent);
-    }
-
-    @keyframes shimmer {
-      0% { background-position: 0% 50%; }
-      100% { background-position: 200% 50%; }
-    }
-    @keyframes floatAmbient {
-      0%, 100% { transform: translateY(0) rotate(0deg); }
-      50% { transform: translateY(-20px) rotate(1deg); }
-    }
-
-    @media (max-width: 768px) {
-      .hero-title { font-size: 2.1rem; }
-      .hero-sub { font-size: .95rem; }
-      .mini-metrics { grid-template-columns: 1fr; }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .gradio-container::before,
-      .gradio-container::after,
-      .hero-title-accent {
-        animation: none !important;
-      }
-      .gradio-container .block,
-      .gradio-container .panel,
-      .gradio-container button.primary {
-        transition: none !important;
-      }
+      margin-top: .55rem;
+      color: #b8c0cc;
+      line-height: 1.6;
+      max-width: 760px;
     }
     """
     theme = gr.themes.Soft(
@@ -531,31 +313,14 @@ def create_demo():
 
         gr.HTML(
             """
-            <div class="hero">
-              <div class="hero-kicker">Sentinel Log Shield / OpenEnv</div>
-              <h1 class="hero-title">
-                Redact logs with
-                <span class="hero-title-accent">precision-grade intelligence</span>
-              </h1>
+            <div style="padding: 0.3rem 0 0.9rem;">
+              <h1 class="hero-title">Sentinel-Log-Shield Demo</h1>
               <p class="hero-sub">
-                A premium OpenEnv demonstration for enterprise PII protection.
-                Evaluate contextual redaction quality across increasing task difficulty with explainable reward metrics.
+                Clean evaluation interface for running all tasks and presenting results clearly to judges.
               </p>
-              <span class="pill">Risk-aware</span>
-              <span class="pill">Motion-tuned UI</span>
-              <span class="pill">Judge-ready demo</span>
-              <span class="pill">Build: __BUILD_SHA__</span>
-              <div class="mini-metrics">
-                <div class="metric-card"><b>3 Tasks</b><span>Progressive benchmark</span></div>
-                <div class="metric-card"><b>F1 Scored</b><span>Precision + recall tracked</span></div>
-                <div class="metric-card"><b>Space Ready</b><span>Docker + HF deployment</span></div>
-              </div>
             </div>
             """
-            .replace("__BUILD_SHA__", build_sha)
         )
-
-        gr.HTML('<div class="section-divider"></div>')
 
         # Controls
         with gr.Row():
@@ -568,13 +333,11 @@ def create_demo():
                     ],
                     value="Task 1: Email & IPv4 Detection (Easy)",
                     label="📋 Select Task",
-                    elem_classes=["spotlight-card"],
                 )
                 run_button = gr.Button(
                     "▶ Run Demo",
                     variant="primary",
                     size="lg",
-                    elem_classes=["spotlight-card"],
                 )
 
         # Output area
@@ -585,7 +348,6 @@ def create_demo():
                         "Click 'Run Demo' to start...",
                         BLUE,
                     ),
-                    elem_classes=["spotlight-card"],
                 )
 
         # Status and score
@@ -593,14 +355,12 @@ def create_demo():
             with gr.Column():
                 status_display = gr.HTML(
                     value="<p>Ready to run...</p>",
-                    elem_classes=["spotlight-card"],
                 )
             with gr.Column():
                 score_display = gr.Number(
                     label="📈 Episode Score",
                     value=0.0,
                     interactive=False,
-                    elem_classes=["spotlight-card"],
                 )
 
         gr.Markdown(
@@ -615,40 +375,6 @@ def create_demo():
               - **<0.50**: substantial misses
 
             Repository: https://github.com/bhaveshdamani5-crypto/senitel-env
-            """
-            ,
-            elem_classes=["spotlight-card"]
-        )
-
-        gr.HTML(
-            """
-            <script>
-              (() => {
-                const applySpotlight = () => {
-                  document.querySelectorAll('.spotlight-card').forEach((el) => {
-                    if (el.dataset.spotlightBound === '1') return;
-                    el.dataset.spotlightBound = '1';
-                    el.addEventListener('mousemove', (e) => {
-                      const rect = el.getBoundingClientRect();
-                      el.style.setProperty('--spot-x', `${e.clientX - rect.left}px`);
-                      el.style.setProperty('--spot-y', `${e.clientY - rect.top}px`);
-                    });
-                  });
-                };
-                const applyParallax = () => {
-                  const hero = document.querySelector('.hero');
-                  if (!hero) return;
-                  const progress = Math.min(window.scrollY / 500, 1);
-                  hero.style.setProperty('--hero-opacity', String(1 - (progress * 0.35)));
-                  hero.style.setProperty('--hero-scale', String(1 - (progress * 0.05)));
-                  hero.style.setProperty('--hero-y', `${progress * 44}px`);
-                };
-                applySpotlight();
-                applyParallax();
-                document.addEventListener('scroll', applyParallax, { passive: true });
-                setInterval(applySpotlight, 1200);
-              })();
-            </script>
             """
         )
 
