@@ -61,6 +61,29 @@ from env import LogSanitizerEnvironment, Task
 from models import RedactionAction
 
 # ============================================================================
+# RISK ASSESSMENT FOR TOKENS (Security-focused enhancement)
+# ============================================================================
+
+def assess_token_risk(token: str, token_type: str) -> str:
+    """
+    Assess exploitation risk of identified token.
+    CRITICAL: Actively-used tokens (sk-*, hf_*) with high entropy + operational
+    HIGH: Old but dangerous tokens (AWS, GitHub) still exploitable
+    MEDIUM: Generic secrets without confidence of current use
+    LOW: PII not currently exploitable
+    """
+    if token.startswith("sk-") or token.startswith("hf_") or token.startswith("github"):
+        return "CRITICAL"
+    elif token.startswith("AKIA") or "aws_secret" in token.lower():
+        return "CRITICAL"
+    elif "eyJ" in token[:10] or token.startswith("Bearer"):
+        return "HIGH"
+    elif "api_key" in token.lower() or "secret" in token.lower():
+        return "MEDIUM"
+    else:
+        return "LOW"
+
+# ============================================================================
 # PRIMARY: LLM-BASED REDACTION (OpenAI Client)
 # ============================================================================
 
