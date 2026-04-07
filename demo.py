@@ -237,6 +237,13 @@ def create_demo():
       background: #161b22 !important;
       box-shadow: none !important;
     }
+    .top-shell {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      padding: 16px 16px 10px;
+      background: linear-gradient(180deg, #151b27 0%, #121720 100%);
+      margin-bottom: 12px;
+    }
     .gradio-container .prose,
     .gradio-container .prose p,
     .gradio-container label {
@@ -253,9 +260,14 @@ def create_demo():
       border: none !important;
       border-radius: 10px !important;
       font-weight: 600 !important;
+      min-height: 44px !important;
+      letter-spacing: .01em !important;
     }
     .gradio-container button.primary:hover {
       background: #6872D9 !important;
+    }
+    .gradio-container .block button.primary {
+      box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset;
     }
     .gradio-container input,
     .gradio-container textarea,
@@ -285,16 +297,47 @@ def create_demo():
     }
     .hero-title {
       margin: 0;
-      font-size: clamp(1.8rem, 3vw, 2.4rem);
+      font-size: clamp(2rem, 3vw, 2.7rem);
       font-weight: 700;
       letter-spacing: -0.02em;
-      color: #f3f5f8;
+      color: #ffffff;
+      line-height: 1.15;
     }
     .hero-sub {
-      margin-top: .55rem;
-      color: #b8c0cc;
+      margin-top: .45rem;
+      color: #c6cfdb;
       line-height: 1.6;
-      max-width: 760px;
+      max-width: 820px;
+      font-size: .98rem;
+    }
+    .hero-badge-row {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .hero-badge {
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.04);
+      color: #d9e1ed;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .gradio-container label[for^="component-"] {
+      font-weight: 600 !important;
+      color: #e8edf8 !important;
+    }
+    /* Improve radio clarity */
+    .gradio-container .wrap .form {
+      padding-top: 8px !important;
+    }
+    .gradio-container .wrap .form label {
+      color: #eaf0fb !important;
+    }
+    .gradio-container .wrap .form input[type="radio"] + span {
+      font-weight: 500;
     }
     """
     theme = gr.themes.Soft(
@@ -309,11 +352,16 @@ def create_demo():
 
         gr.HTML(
             """
-            <div style="padding: 0.3rem 0 0.9rem;">
+            <div class="top-shell">
               <h1 class="hero-title">Sentinel-Log-Shield Demo</h1>
               <p class="hero-sub">
                 Clean evaluation interface for running all tasks and presenting results clearly to judges.
               </p>
+              <div class="hero-badge-row">
+                <span class="hero-badge">OpenEnv ready</span>
+                <span class="hero-badge">3 difficulty levels</span>
+                <span class="hero-badge">Precision/Recall/F1 scoring</span>
+              </div>
             </div>
             """
         )
