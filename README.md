@@ -3,10 +3,7 @@ title: Sentinel-Log-Shield OpenEnv Demo
 emoji: 🔐
 colorFrom: indigo
 colorTo: purple
-sdk: gradio
-sdk_version: "4.16.0"
-python_version: "3.10"
-app_file: demo.py
+sdk: docker
 pinned: false
 ---
 
