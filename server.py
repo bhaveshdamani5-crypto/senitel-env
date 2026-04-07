@@ -644,6 +644,10 @@ async def health():
             "is_running":env.is_running,"steps_used":env.steps_used}
 
 
-if __name__ == "__main__":
+def main():
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7860, log_level="info")
+
+
+if __name__ == "__main__":
+    main()
