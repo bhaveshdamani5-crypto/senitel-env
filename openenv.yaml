@@ -1,0 +1,130 @@
+name: "Sentinel-Log-Shield"
+title: "Sentinel-Log-Shield: PII Redaction Environment"
+description: "An SST-compliant OpenEnv environment for redacting sensitive information (PII) from system logs while preserving technical utility"
+
+version: "1.0.0"
+license: "MIT"
+
+# Environment specification
+environment:
+  framework: "openenv"
+  base_class: "LogSanitizerEnvironment"
+  module: "env"
+  methods:
+    - name: "reset"
+      description: "Reset environment and start new episode"
+      input: null
+      output: "ResetResponse"
+    - name: "step"
+      description: "Execute redaction action and return step response"
+      input: "RedactionAction"
+      output: "StepResponse"
+    - name: "state"
+      description: "Get current environment state"
+      input: null
+      output: "EnvironmentState"
+
+# Tasks configuration
+tasks:
+  - id: "task_1"
+    difficulty: "easy"
+    name: "Email and IPv4 Redaction"
+    description: "Detect and redact email addresses and IPv4 addresses from logs"
+    pii_types: ["email", "ipv4"]
+    baseline_score: 0.92
+    grader: "regex_accuracy"
+
+  - id: "task_2"
+    difficulty: "medium"
+    name: "Username Extraction from Logs"
+    description: "Extract usernames from conversational debug logs (e.g., 'Error: User 'Name' failed login')"
+    pii_types: ["username"]
+    baseline_score: 0.85
+    grader: "contextual_pii_recall"
+
+  - id: "task_3"
+    difficulty: "hard"
+    name: "Auth Token/Secret Detection"
+    description: "Identify and redact high-entropy authentication tokens and secrets hidden in stack traces"
+    pii_types: ["token", "secret", "api_key"]
+    baseline_score: 0.78
+    grader: "high_risk_leakage_detection"
+
+# Reward specification
+reward:
+  partial_progress: 0.2
+  full_correct: 1.0
+  penalty_missed_secret: -1.0
+  penalty_over_redacting: -0.3
+
+reward_shape:
+  perfect: "1.0 (F1=1.0)"
+  excellent: "0.8 (F1>=0.9 and Precision>=0.8)"
+  good: "0.5 (F1>=0.6)"
+  partial: "0.2 (Some detection)"
+
+# API specification (FastAPI)
+api:
+  framework: "fastapi"
+  host: "0.0.0.0"
+  port: 7860
+  endpoints:
+    - method: "POST"
+      path: "/reset"
+      description: "Reset environment for new episode"
+      response_model: "ResetResponse"
+
+    - method: "POST"
+      path: "/step"
+      description: "Execute one environment step"
+      input_model: "RedactionAction"
+      response_model: "StepResponse"
+
+    - method: "GET"
+      path: "/state"
+      description: "Get current state"
+      response_model: "EnvironmentState"
+
+    - method: "GET"
+      path: "/health"
+      description: "Health check"
+
+    - method: "GET"
+      path: "/"
+      description: "Root API info"
+
+# Models (Pydantic BaseModel)
+models:
+  observation: "Observation"
+  action: "RedactionAction"
+  reward: "Reward"
+  step_response: "StepResponse"
+  reset_response: "ResetResponse"
+  state: "EnvironmentState"
+
+# Inference configuration (for SST validation)
+inference:
+  llm_provider: "openai"
+  model: "gpt-4o-mini"
+  temperature: 0.7
+  max_tokens: 500
+  framework: "openai_client"
+
+# Docker configuration
+docker:
+  image: "sentinel-log-shield:latest"
+  port: 7860
+  environment:
+    - "HOST=0.0.0.0"
+    - "PORT=7860"
+
+# Production readiness checklist
+production:
+  modular_design: true
+  pydantic_models: true
+  error_handling: true
+  logging: true
+  cors_enabled: true
+  health_check: true
+  sst_compliant: true
+  openenv_validate_ready: true
