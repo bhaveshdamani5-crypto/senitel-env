@@ -247,12 +247,21 @@ def create_demo():
     .gradio-container .prose,
     .gradio-container .prose p,
     .gradio-container label {
-      color: #d0d7e2 !important;
+      color: #dbe3ef !important;
     }
     .gradio-container .prose h1,
     .gradio-container .prose h2,
     .gradio-container .prose h3 {
       color: #ffffff !important;
+    }
+    .gradio-container .prose li,
+    .gradio-container .prose strong,
+    .gradio-container .prose a {
+      color: #e8eefb !important;
+    }
+    .gradio-container .prose a {
+      text-decoration: underline;
+      text-underline-offset: 2px;
     }
     .gradio-container button.primary {
       background: #5E6AD2 !important;
@@ -295,6 +304,16 @@ def create_demo():
       font-weight: 700 !important;
       opacity: 1 !important;
     }
+    .gradio-container .prose table td {
+      padding: 8px !important;
+      font-size: 13px !important;
+    }
+    .gradio-container .prose table tbody tr:nth-child(odd) td {
+      background: #141a23 !important;
+    }
+    .gradio-container .prose table tbody tr:nth-child(even) td {
+      background: #10161f !important;
+    }
     .hero-title {
       margin: 0;
       font-size: clamp(2rem, 3vw, 2.7rem);
@@ -329,15 +348,41 @@ def create_demo():
       font-weight: 600 !important;
       color: #e8edf8 !important;
     }
-    /* Improve radio clarity */
+    /* Segmented task picker */
     .gradio-container .wrap .form {
       padding-top: 8px !important;
     }
     .gradio-container .wrap .form label {
       color: #eaf0fb !important;
     }
+    .gradio-container .wrap .form .wrap {
+      gap: 8px !important;
+    }
+    .gradio-container .wrap .form label span {
+      font-weight: 600 !important;
+    }
     .gradio-container .wrap .form input[type="radio"] + span {
-      font-weight: 500;
+      display: inline-flex !important;
+      align-items: center !important;
+      min-height: 38px !important;
+      border-radius: 10px !important;
+      border: 1px solid rgba(255,255,255,0.14) !important;
+      background: #171d26 !important;
+      color: #e9effb !important;
+      padding: 0 12px !important;
+      transition: all .18s ease !important;
+    }
+    .gradio-container .wrap .form input[type="radio"]:checked + span {
+      background: #5E6AD2 !important;
+      border-color: rgba(255,255,255,0.30) !important;
+      color: #ffffff !important;
+    }
+    .gradio-container .wrap .form input[type="radio"] + span:hover {
+      background: #202838 !important;
+    }
+    /* Hide default footer links for cleaner presentation */
+    .gradio-container footer {
+      display: none !important;
     }
     """
     theme = gr.themes.Soft(
