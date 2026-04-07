@@ -5,6 +5,8 @@ colorFrom: indigo
 colorTo: purple
 sdk: docker
 pinned: false
+tags:
+  - openenv
 ---
 
 # Sentinel-Log-Shield
@@ -111,6 +113,36 @@ uvicorn server:app --host 0.0.0.0 --port 7860 --reload
 curl -X POST http://localhost:7860/reset
 curl http://localhost:7860/health
 curl http://localhost:7860/state
+```
+
+## OpenEnv Validation Proof
+
+Run the official validator from the project root:
+
+```bash
+python -m openenv.cli validate
+```
+
+Expected successful output:
+
+```text
+[OK] senitel-env-deploy: Ready for multi-mode deployment
+```
+
+## Baseline Inference Smoke Run
+
+Run baseline inference (uses `HF_TOKEN` when present, regex fallback otherwise):
+
+```bash
+python inference.py
+```
+
+Latest local smoke-run summary:
+
+```text
+[START] task=task_2 ... [END] success=true score=1.00
+[START] task=task_1 ... [END] success=true score=1.00
+[START] task=task_3 ... [END] success=false score=-0.10
 ```
 
 ## Deployment Flow (GitHub -> HF Spaces)

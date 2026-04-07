@@ -3,7 +3,7 @@ Sentinel-Log-Shield FastAPI server with premium custom docs UI.
 Provides POST /reset, POST /step, GET /state endpoints.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -382,7 +382,66 @@ async def reset():
 
 
 @app.post("/step", response_model=StepResponse)
-async def step(action: RedactionAction):
+async def step(
+    action: RedactionAction = Body(
+        ...,
+        examples={
+            "task_1_email_ipv4": {
+                "summary": "Task 1 - Email and IPv4 redaction",
+                "description": "Sample payload for easy pattern redaction test.",
+                "value": {
+                    "log_id": "abc12345",
+                    "redactions": [
+                        {
+                            "type": "email",
+                            "original": "alice.smith@company.com",
+                            "redacted": "[REDACTED_EMAIL]"
+                        },
+                        {
+                            "type": "ipv4",
+                            "original": "10.0.0.5",
+                            "redacted": "[REDACTED_IP]"
+                        }
+                    ],
+                    "redacted_log": "User [REDACTED_EMAIL] logged in from [REDACTED_IP] at 14:30 UTC",
+                    "confidence": 0.95
+                },
+            },
+            "task_2_username": {
+                "summary": "Task 2 - Username extraction",
+                "description": "Sample payload for contextual username redaction.",
+                "value": {
+                    "log_id": "def67890",
+                    "redactions": [
+                        {
+                            "type": "username",
+                            "original": "Bhavesh",
+                            "redacted": "[REDACTED_USER]"
+                        }
+                    ],
+                    "redacted_log": "Error: User '[REDACTED_USER]' failed login attempt after 3 tries",
+                    "confidence": 0.9
+                },
+            },
+            "task_3_secrets": {
+                "summary": "Task 3 - Secret/token redaction",
+                "description": "Sample payload for high-risk token/secret redaction.",
+                "value": {
+                    "log_id": "ghi24680",
+                    "redactions": [
+                        {
+                            "type": "token",
+                            "original": "sk_live_51234567890abcdef",
+                            "redacted": "[REDACTED_TOKEN]"
+                        }
+                    ],
+                    "redacted_log": "Traceback (most recent call last): [REDACTED_TOKEN] in auth.py line 42",
+                    "confidence": 0.92
+                },
+            },
+        },
+    )
+):
     """
     Execute one step: process redaction action and return reward.
     
@@ -530,7 +589,7 @@ app = gr.mount_gradio_app(
 )
 
 
-if __name__ == "__main__":
+def main():
     import uvicorn
     uvicorn.run(
         app,
@@ -538,3 +597,7 @@ if __name__ == "__main__":
         port=7860,
         log_level="info"
     )
+
+
+if __name__ == "__main__":
+    main()
