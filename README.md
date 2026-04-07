@@ -1,3 +1,13 @@
+---
+title: Sentinel-Log-Shield
+emoji: 🛡️
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_file: server.py
+pinned: false
+---
+
 # Sentinel-Log-Shield: SST-Compliant PII Redaction Environment
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
@@ -380,6 +390,7 @@ sentinel-log-shield/
 ### Automatic Deployment (Recommended)
 
 1. **Fork/Clone to GitHub** (if not already done)
+
    ```bash
    git clone https://github.com/yourusername/sentinel-log-shield.git
    ```
@@ -396,6 +407,7 @@ sentinel-log-shield/
 #### Option A: Without API Credits (Fallback Mode ✅ RECOMMENDED)
 
 The environment works **completely offline** using regex-based redaction:
+
 - No OpenAI API calls required
 - Deterministic, reproducible results
 - Perfect for testing and validation
@@ -413,6 +425,7 @@ The environment works **completely offline** using regex-based redaction:
 4. Now uses gpt-4o-mini for enhanced redaction
 
 **Trade-offs:**
+
 - ✅ Better performance on complex tasks (Task 2, Task 3)
 - ❌ Requires OpenAI API credits (~$0.01 per inference)
 - ❌ Slower: 200-300ms vs instant regex
@@ -431,13 +444,14 @@ def redact_emails_and_ips(log: str):
 def redact_usernames(log: str):
     # Regex patterns for "user=", "username:", etc.
     # Contextual extraction without LLM
-    
+
 def redact_auth_tokens(log: str):
     # Detects: Bearer tokens, JWT, sk-*, hf_*, API keys
     # ✅ Catches most high-entropy secrets
 ```
 
 **Performance:**
+
 - F1 Score: ~0.85-0.92 (regexes are quite good!)
 - Speed: <10ms per log
 - Cost: $0.00
