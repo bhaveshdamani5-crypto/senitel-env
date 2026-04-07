@@ -35,5 +35,5 @@ ENV PYTHONUNBUFFERED=1
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:7860/ || exit 1
 
-# Run the Gradio demo (HF Spaces optimized)
-CMD ["python", "demo.py"]
+# Run FastAPI app (custom Swagger + mounted demo at /demo)
+CMD ["python", "server.py"]

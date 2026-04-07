@@ -7,9 +7,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+import gradio as gr
 import logging
 from env import LogSanitizerEnvironment
 from models import RedactionAction, ResetResponse, StepResponse, EnvironmentState
+from demo import create_demo
 
 # Configure logging
 logging.basicConfig(
@@ -177,6 +179,7 @@ async def root():
         <article class="kpi"><b>Deployment Ready</b>Hugging Face Spaces + Docker-first architecture.</article>
       </div>
       <div class="actions">
+        <a class="btn ghost" href="/demo">Open Demo UI</a>
         <a class="btn" href="/docs">Open Interactive Docs</a>
         <a class="btn ghost" href="/redoc">Open Technical Reference</a>
         <a class="btn ghost" href="/health">Health Endpoint</a>
@@ -396,6 +399,17 @@ async def health_check():
         "is_running": env.is_running,
         "cumulative_reward": env.cumulative_reward
     }
+
+
+# Mount Gradio demo under /demo while keeping FastAPI docs at /docs
+gradio_app, gradio_css, gradio_theme = create_demo()
+gradio_app.css = gradio_css
+gradio_app.theme = gradio_theme
+app = gr.mount_gradio_app(
+    app,
+    gradio_app,
+    path="/demo",
+)
 
 
 if __name__ == "__main__":
