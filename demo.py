@@ -247,66 +247,241 @@ def create_demo():
     """Create Gradio interface."""
     premium_css = """
     :root {
-      --bg-0: #070910;
-      --bg-1: #121936;
-      --glass: rgba(255, 255, 255, 0.08);
-      --glass-border: rgba(255, 255, 255, 0.2);
-      --text: #eef3ff;
-      --muted: #b8c3e0;
-      --accent: #8aa1ff;
-      --accent2: #65e5cf;
+      --background-deep: #020203;
+      --background-base: #050506;
+      --background-elevated: #0a0a0c;
+      --surface: rgba(255,255,255,0.05);
+      --surface-hover: rgba(255,255,255,0.08);
+      --foreground: #EDEDEF;
+      --foreground-muted: #8A8F98;
+      --foreground-subtle: rgba(255,255,255,0.60);
+      --accent: #5E6AD2;
+      --accent-bright: #6872D9;
+      --accent-glow: rgba(94,106,210,0.3);
+      --border-default: rgba(255,255,255,0.06);
+      --border-hover: rgba(255,255,255,0.10);
     }
+
     .gradio-container {
+      position: relative;
       background:
-        radial-gradient(circle at 15% 20%, #3b4a99 0%, transparent 30%),
-        radial-gradient(circle at 88% 24%, #1b7f86 0%, transparent 24%),
-        linear-gradient(135deg, var(--bg-0), var(--bg-1)) !important;
-      color: var(--text) !important;
-      font-family: Inter, Segoe UI, system-ui, sans-serif !important;
+        radial-gradient(ellipse at top, #0a0a0f 0%, #050506 50%, #020203 100%),
+        linear-gradient(180deg, #050506, #020203) !important;
+      color: var(--foreground) !important;
+      font-family: Inter, "Geist Sans", system-ui, sans-serif !important;
+      overflow-x: hidden;
     }
-    .gradio-container .block, .gradio-container .panel {
-      border: 1px solid var(--glass-border) !important;
-      background: var(--glass) !important;
-      backdrop-filter: blur(14px);
-      border-radius: 18px !important;
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
-      animation: rise .5s ease both;
+
+    .gradio-container::before,
+    .gradio-container::after {
+      content: "";
+      position: fixed;
+      z-index: 0;
+      width: 1000px;
+      height: 1400px;
+      filter: blur(150px);
+      pointer-events: none;
+      opacity: 0.22;
+      animation: floatAmbient 10s ease-in-out infinite;
     }
+    .gradio-container::before {
+      top: -45%;
+      left: 35%;
+      background: radial-gradient(circle, rgba(94,106,210,0.95) 0%, rgba(94,106,210,0.0) 70%);
+    }
+    .gradio-container::after {
+      top: -30%;
+      left: -30%;
+      background: radial-gradient(circle, rgba(126,90,255,0.45) 0%, rgba(126,90,255,0) 70%);
+      animation-delay: -4s;
+    }
+
+    .gradio-container .main,
+    .gradio-container .wrap {
+      position: relative;
+      z-index: 1;
+    }
+
+    .gradio-container .block,
+    .gradio-container .panel,
+    .gradio-container .form {
+      border: 1px solid var(--border-default) !important;
+      background: linear-gradient(to bottom, rgba(255,255,255,0.08), rgba(255,255,255,0.02)) !important;
+      border-radius: 16px !important;
+      backdrop-filter: blur(12px);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.06),
+        0 2px 20px rgba(0,0,0,0.4),
+        0 0 40px rgba(0,0,0,0.2);
+      transition: border-color .24s cubic-bezier(.16,1,.3,1), transform .24s cubic-bezier(.16,1,.3,1), box-shadow .24s cubic-bezier(.16,1,.3,1);
+    }
+
+    .gradio-container .block:hover,
+    .gradio-container .panel:hover {
+      border-color: var(--border-hover) !important;
+      transform: translateY(-4px);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.10),
+        0 8px 40px rgba(0,0,0,0.5),
+        0 0 80px rgba(94,106,210,0.10);
+    }
+
+    .gradio-container .prose,
+    .gradio-container .prose p,
+    .gradio-container label {
+      color: var(--foreground-muted) !important;
+    }
+
+    .gradio-container .prose h1,
+    .gradio-container .prose h2,
+    .gradio-container .prose h3 {
+      color: var(--foreground) !important;
+    }
+
     .gradio-container button.primary {
-      background: linear-gradient(135deg, var(--accent), var(--accent2)) !important;
-      color: #081024 !important;
+      background: var(--accent) !important;
+      color: #fff !important;
       border: 0 !important;
-      font-weight: 700 !important;
-      border-radius: 12px !important;
-      transition: transform .2s ease, box-shadow .2s ease;
+      border-radius: 10px !important;
+      font-weight: 600 !important;
+      box-shadow:
+        0 0 0 1px rgba(94,106,210,0.5),
+        0 4px 12px rgba(94,106,210,0.3),
+        inset 0 1px 0 0 rgba(255,255,255,0.2) !important;
+      transition: all .22s cubic-bezier(.16,1,.3,1) !important;
     }
     .gradio-container button.primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 26px rgba(101, 229, 207, 0.32);
+      background: var(--accent-bright) !important;
+      transform: translateY(-2px) !important;
+      box-shadow:
+        0 0 0 1px rgba(94,106,210,0.62),
+        0 8px 18px rgba(94,106,210,0.35),
+        0 0 34px rgba(94,106,210,0.25),
+        inset 0 1px 0 0 rgba(255,255,255,0.25) !important;
+    }
+    .gradio-container button.primary:active {
+      transform: scale(0.98) !important;
+    }
+
+    .gradio-container input,
+    .gradio-container textarea,
+    .gradio-container select {
+      background: #0f1014 !important;
+      color: var(--foreground) !important;
+      border: 1px solid rgba(255,255,255,0.10) !important;
+      border-radius: 10px !important;
+    }
+    .gradio-container input:focus,
+    .gradio-container textarea:focus,
+    .gradio-container select:focus {
+      border-color: rgba(94,106,210,0.65) !important;
+      box-shadow: 0 0 0 2px rgba(94,106,210,0.28) !important;
+    }
+
+    .hero {
+      padding: 1.2rem 0.2rem 0.8rem;
+    }
+    .hero-kicker {
+      font-size: .72rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--foreground-subtle);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      margin-bottom: .8rem;
     }
     .hero-title {
-      font-size: clamp(1.8rem, 4vw, 2.7rem);
-      margin: 0 0 .55rem;
-      letter-spacing: -0.02em;
-      animation: rise .55s ease both;
+      font-size: clamp(2rem, 5vw, 4.2rem);
+      margin: 0 0 .6rem;
+      line-height: 1.05;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      background: linear-gradient(to bottom, #fff 0%, rgba(255,255,255,0.94) 50%, rgba(255,255,255,0.70) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .hero-title-accent {
+      background: linear-gradient(90deg, #5E6AD2, #95a0ff, #5E6AD2);
+      background-size: 200% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: shimmer 6s linear infinite;
     }
     .hero-sub {
-      color: var(--muted);
+      max-width: 840px;
+      line-height: 1.7;
+      color: var(--foreground-muted);
       margin: 0 0 1rem;
-      line-height: 1.6;
-      animation: rise .7s ease both;
+      font-size: clamp(0.95rem, 2vw, 1.1rem);
     }
     .pill {
       display: inline-block;
-      font-size: .8rem;
-      padding: .35rem .75rem;
+      margin-right: .5rem;
+      margin-bottom: .5rem;
+      padding: .36rem .8rem;
       border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, .3);
-      background: rgba(255, 255, 255, .08);
-      margin-right: .45rem;
-      margin-bottom: .45rem;
+      border: 1px solid rgba(94,106,210,0.30);
+      color: #cfd5ff;
+      background: rgba(94,106,210,0.10);
+      font-size: .72rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     }
-    @keyframes rise { from { opacity: 0; transform: translateY(10px);} to {opacity: 1; transform: none;} }
+
+    .mini-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(120px, 1fr));
+      gap: .75rem;
+      margin-top: 1rem;
+    }
+    .metric-card {
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      padding: .72rem .8rem;
+    }
+    .metric-card b {
+      display: block;
+      color: var(--foreground);
+      font-size: .95rem;
+      margin-bottom: .2rem;
+    }
+    .metric-card span {
+      color: var(--foreground-muted);
+      font-size: .78rem;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 0% 50%; }
+      100% { background-position: 200% 50%; }
+    }
+    @keyframes floatAmbient {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(-20px) rotate(1deg); }
+    }
+
+    @media (max-width: 768px) {
+      .hero-title { font-size: 2.1rem; }
+      .hero-sub { font-size: .95rem; }
+      .mini-metrics { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .gradio-container::before,
+      .gradio-container::after,
+      .hero-title-accent {
+        animation: none !important;
+      }
+      .gradio-container .block,
+      .gradio-container .panel,
+      .gradio-container button.primary {
+        transition: none !important;
+      }
+    }
     """
     with gr.Blocks(
         title="Sentinel-Log-Shield: OpenEnv Demo",
@@ -318,20 +493,28 @@ def create_demo():
         ),
     ) as demo:
 
-        # Header
         gr.HTML(
             """
-<div style="padding: 0.2rem 0.2rem 0.7rem;">
-  <h1 class="hero-title">Sentinel-Log-Shield</h1>
-  <p class="hero-sub">
-    Enterprise-style log privacy sandbox with intelligent redaction scoring.
-    Run episodes across progressive tasks and inspect precision/recall/F1 output in real time.
-  </p>
-  <span class="pill">OpenEnv Compliant</span>
-  <span class="pill">Risk-Aware Redaction</span>
-  <span class="pill">Judge-Friendly Output</span>
-</div>
-"""
+            <div class="hero">
+              <div class="hero-kicker">Sentinel Log Shield / OpenEnv</div>
+              <h1 class="hero-title">
+                Redact logs with
+                <span class="hero-title-accent">precision-grade intelligence</span>
+              </h1>
+              <p class="hero-sub">
+                A premium OpenEnv demonstration for enterprise PII protection.
+                Evaluate contextual redaction quality across increasing task difficulty with explainable reward metrics.
+              </p>
+              <span class="pill">Risk-aware</span>
+              <span class="pill">Motion-tuned UI</span>
+              <span class="pill">Judge-ready demo</span>
+              <div class="mini-metrics">
+                <div class="metric-card"><b>3 Tasks</b><span>Progressive benchmark</span></div>
+                <div class="metric-card"><b>F1 Scored</b><span>Precision + recall tracked</span></div>
+                <div class="metric-card"><b>Space Ready</b><span>Docker + HF deployment</span></div>
+              </div>
+            </div>
+            """
         )
 
         # Controls
@@ -375,59 +558,19 @@ def create_demo():
                     interactive=False,
                 )
 
-        # Examples
         gr.Markdown(
             """
----
+            ### How to evaluate this demo
+            - Pick a task and run the full episode.
+            - Inspect extracted entities, reward feedback, and final score.
+            - Use score bands to judge redaction reliability:
+              - **1.00**: ideal extraction with utility preserved
+              - **0.80+**: high confidence behavior
+              - **0.50+**: partial correctness
+              - **<0.50**: substantial misses
 
-## 📚 Examples
-
-### Task 1 Input (Email & IPv4)
-```
-User alice@company.com logged in from 192.168.1.1 at 14:30
-```
-
-### Task 2 Input (Username)
-```
-Error: User 'Bob' failed login attempt after 3 tries
-```
-
-### Task 3 Input (Secrets)
-```
-Traceback: sk_live_1234567890abcdef in auth.py line 42
-```
-
----
-
-## 🏆 Scoring Explained
-
-| Score | Meaning |
-|-------|---------|
-| **1.0** | Perfect redaction (100% accuracy) |
-| **0.8** | Excellent (90%+ recall, 80%+ precision) |
-| **0.5** | Good (60%+ F1-score) |
-| **0.2** | Partial (some redactions found) |
-| **-1.0** | Critical failure (missed secrets in Task 3) |
-
----
-
-## 🔧 How It Works
-
-1️⃣ **Environment Reset** → Randomly selects task and log  
-2️⃣ **Agent Infers** → Uses regex patterns (no API needed)  
-3️⃣ **Action Taken** → Detects and redacts PII  
-4️⃣ **Step Evaluates** → Computes F1-score and reward  
-5️⃣ **Episode Ends** → Shows final score
-
----
-
-## 🎓 More Information
-
-- **GitHub Repository**: https://github.com/bhaveshdamani5-crypto/senitel-env
-- **README**: Professional docs + architecture flowcharts
-- **OpenEnv Framework**: https://github.com/openai/openenv
-
-"""
+            Repository: https://github.com/bhaveshdamani5-crypto/senitel-env
+            """
         )
 
         # Connect button to function
