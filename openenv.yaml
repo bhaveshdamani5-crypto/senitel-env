@@ -1,67 +1,117 @@
 name: "Sentinel-Log-Shield"
-title: "Sentinel-Log-Shield: PII Redaction Environment"
-description: "An SST-compliant OpenEnv environment for redacting sensitive information (PII) from system logs while preserving technical utility"
+title: "Sentinel-Log-Shield: Interactive Security Investigation Environment"
+description: >
+  A genuine multi-step RL environment where agents investigate simulated data
+  breaches through procedurally-generated entity graphs. Agents SCAN logs,
+  INVESTIGATE entities to reveal hidden connections, REDACT discovered PII,
+  and SUBMIT findings — all within a limited step budget.
 
-version: "1.0.0"
+version: "2.0.0"
 license: "MIT"
 
 # Environment specification
 environment:
   framework: "openenv"
-  base_class: "LogSanitizerEnvironment"
+  base_class: "SentinelEnvironment"
   module: "env"
   methods:
     - name: "reset"
-      description: "Reset environment and start new episode"
-      input: null
-      output: "ResetResponse"
+      description: "Start a new investigation episode with procedurally-generated scenario"
+      input:
+        difficulty: "easy | medium | hard"
+        seed: "Optional integer for reproducibility"
+      output: "ResetResult(observation, info)"
     - name: "step"
-      description: "Execute redaction action and return step response"
-      input: "RedactionAction"
-      output: "StepResponse"
+      description: "Execute one investigation action"
+      input: "AgentAction(action_type, target_entity?, redactions?)"
+      output: "StepResult(observation, reward, terminated, truncated, info)"
     - name: "state"
       description: "Get current environment state"
       input: null
       output: "EnvironmentState"
 
-# Tasks configuration
-tasks:
-  - id: "task_1"
-    difficulty: "easy"
-    name: "Email and IPv4 Redaction"
-    description: "Detect and redact email addresses and IPv4 addresses from logs"
-    pii_types: ["email", "ipv4"]
-    baseline_score: 0.92
-    grader: "regex_accuracy"
+# Action space
+action_space:
+  type: "discrete"
+  actions:
+    - name: "SCAN"
+      description: "Extract PII entities from currently visible logs"
+      parameters: null
+    - name: "INVESTIGATE"
+      description: "Deep-dive into an entity; reveals connected logs and hidden PII"
+      parameters:
+        target_entity: "string — entity to investigate (username, IP, email)"
+    - name: "REDACT"
+      description: "Submit discovered PII items for redaction scoring"
+      parameters:
+        redactions: "list of {original: string, type: string}"
+    - name: "SUBMIT"
+      description: "End the episode and receive final comprehensive score"
+      parameters: null
 
-  - id: "task_2"
-    difficulty: "medium"
-    name: "Username Extraction from Logs"
-    description: "Extract usernames from conversational debug logs (e.g., 'Error: User 'Name' failed login')"
-    pii_types: ["username"]
-    baseline_score: 0.85
-    grader: "contextual_pii_recall"
+# Observation space
+observation_space:
+  visible_logs: "List[str] — log entries currently visible"
+  discovered_entities: "List[str] — PII entities found so far"
+  investigation_targets: "List[str] — entities available for investigation"
+  scan_results: "List[Dict] — PII found in latest scan"
+  redacted_items: "List[Dict] — PII already redacted"
+  steps_remaining: "int — investigation budget left"
+  steps_used: "int — steps consumed"
+  difficulty: "str — easy | medium | hard"
+  hint: "str — environment guidance"
+  score_so_far: "float — running score"
+  total_pii_to_find: "int — total hidden PII items"
+  pii_found_count: "int — items correctly redacted"
 
-  - id: "task_3"
-    difficulty: "hard"
-    name: "Auth Token/Secret Detection"
-    description: "Identify and redact high-entropy authentication tokens and secrets hidden in stack traces"
-    pii_types: ["token", "secret", "api_key"]
-    baseline_score: 0.78
-    grader: "high_risk_leakage_detection"
+# Difficulty configuration
+difficulty_levels:
+  easy:
+    users: 2
+    layers: 2
+    step_budget: 12
+    secrets: 1
+    description: "Two users, shallow investigation, generous budget"
+  medium:
+    users: 3
+    layers: 3
+    step_budget: 10
+    secrets: 2
+    description: "Three users, moderate depth, balanced budget"
+  hard:
+    users: 4
+    layers: 4
+    step_budget: 8
+    secrets: 3
+    description: "Four users, deep investigation, tight budget"
 
 # Reward specification
 reward:
-  partial_progress: 0.2
-  full_correct: 1.0
-  penalty_missed_secret: -1.0
-  penalty_over_redacting: -0.3
+  components:
+    f1_score:
+      weight: 0.70
+      description: "Precision/Recall/F1 of redacted vs ground truth"
+    discovery_rate:
+      weight: 0.20
+      description: "Fraction of total PII the agent discovered"
+    recall_bonus:
+      weight: 0.10
+      description: "Raw recall (items redacted / total)"
+    efficiency_bonus:
+      per_step_saved: 0.05
+      description: "Bonus for completing with steps remaining"
+    secret_penalty:
+      per_missed: -0.30
+      description: "Harsh penalty for each critical secret missed"
 
-reward_shape:
-  perfect: "1.0 (F1=1.0)"
-  excellent: "0.8 (F1>=0.9 and Precision>=0.8)"
-  good: "0.5 (F1>=0.6)"
-  partial: "0.2 (Some detection)"
+# RL properties
+rl_properties:
+  state_transitions: true
+  sequential_decisions: true
+  hidden_information: true
+  procedural_generation: true
+  strategy_required: true
+  exploration_vs_exploitation: true
 
 # API specification (FastAPI)
 api:
@@ -71,54 +121,30 @@ api:
   endpoints:
     - method: "POST"
       path: "/reset"
-      description: "Reset environment for new episode"
-      response_model: "ResetResponse"
-
+      description: "Start new investigation episode"
+      response_model: "ResetResult"
     - method: "POST"
       path: "/step"
-      description: "Execute one environment step"
-      input_model: "RedactionAction"
-      response_model: "StepResponse"
-
+      description: "Execute investigation action"
+      input_model: "AgentAction"
+      response_model: "StepResult"
     - method: "GET"
       path: "/state"
       description: "Get current state"
       response_model: "EnvironmentState"
-
     - method: "GET"
       path: "/health"
       description: "Health check"
 
-    - method: "GET"
-      path: "/"
-      description: "Root API info"
-
-# Models (Pydantic BaseModel)
-models:
-  observation: "Observation"
-  action: "RedactionAction"
-  reward: "Reward"
-  step_response: "StepResponse"
-  reset_response: "ResetResponse"
-  state: "EnvironmentState"
-
-# Inference configuration (for SST validation)
-inference:
-  llm_provider: "openai"
-  model: "gpt-4o-mini"
-  temperature: 0.7
-  max_tokens: 500
-  framework: "openai_client"
-
 # Docker configuration
 docker:
-  image: "sentinel-log-shield:latest"
+  image: "sentinel-log-shield:2.0"
   port: 7860
   environment:
     - "HOST=0.0.0.0"
     - "PORT=7860"
 
-# Production readiness checklist
+# Production readiness
 production:
   modular_design: true
   pydantic_models: true
@@ -126,5 +152,5 @@ production:
   logging: true
   cors_enabled: true
   health_check: true
-  sst_compliant: true
-  openenv_validate_ready: true
+  procedural_generation: true
+  gymnasium_compliant: true

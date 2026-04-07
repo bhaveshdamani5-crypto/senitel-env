@@ -1,241 +1,177 @@
 """
-grader.py — Evaluation and Reward Calculation Engine
+Sentinel-Log-Shield v2: Grading Engine.
 
-Implements scoring logic for all 3 PII redaction tasks:
-- Task 1: Email & IPv4 detection
-- Task 2: Username extraction
-- Task 3: High-entropy secret detection
+Evaluates agent performance using hidden ground truth from the scenario.
+Unlike v1 where grader and agent used the same regexes, here the grader
+has access to the full entity graph and scores based on discovery depth,
+redaction accuracy, and investigation efficiency.
 
-Uses F1-score for primary metric with reward shaping for agent feedback.
+Scoring components:
+- F1 Score (precision/recall of redacted vs ground truth) — 70% weight
+- Discovery Rate (fraction of total PII the agent even found) — 20% weight
+- Efficiency Bonus (steps saved from budget) — 5% weight
+- Secret Penalty (harsh penalty per missed critical secret) — up to -30%
 """
 
-import re
-from typing import Dict, Set, Tuple
-from models import TaskEnum
+from typing import Dict, Set, List, Tuple, Any
 
 
-class RedactionGrader:
-    """Evaluates redaction quality and computes rewards."""
-
-    # Regex patterns for ground truth extraction
-    PATTERNS = {
-        "email": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-        "ipv4": r'\b(?:\d{1,3}\.){3}\d{1,3}\b',
-        "username": r"User\s+'([A-Za-z]+)'",
-        "token_sk": r'\bsk_[a-z0-9_]{20,}\b',
-        "token_aws": r'\b[A-Z0-9]{20}\b',
-        "token_secret": r'(?:secret|key|password|api_key|token)\s*=\s*(\S+)',
-    }
+class InvestigationGrader:
+    """Evaluates the agent's investigation and redaction performance."""
 
     @staticmethod
-    def extract_ground_truth(log: str, task: TaskEnum) -> Set[str]:
+    def compute_metrics(
+        redacted: Set[str],
+        ground_truth: Set[str],
+        discovered: Set[str],
+        steps_used: int,
+        steps_budget: int,
+        secret_tokens: Set[str],
+    ) -> Dict[str, Any]:
         """
-        Extract ground truth PII from raw log based on task type.
+        Compute comprehensive metrics for the investigation episode.
 
         Args:
-            log: Raw log content
-            task: Task type (TASK_1, TASK_2, TASK_3)
+            redacted: PII items the agent chose to redact
+            ground_truth: All PII items in the scenario (hidden from agent)
+            discovered: PII items the agent discovered through scanning/investigation
+            steps_used: Number of steps the agent consumed
+            steps_budget: Maximum steps allowed
+            secret_tokens: Set of critical secret tokens in the scenario
 
         Returns:
-            Set of ground truth PII entries
+            Dictionary with all metrics and component scores
         """
-        pii_set = set()
+        total = len(ground_truth)
+        if total == 0:
+            return {
+                "precision": 1.0, "recall": 1.0, "f1_score": 1.0,
+                "discovery_rate": 1.0, "efficiency": 1.0,
+                "total_score": 1.0, "grade": "S",
+            }
 
-        if task == TaskEnum.TASK_1:
-            # Email addresses
-            emails = re.findall(RedactionGrader.PATTERNS["email"], log)
-            pii_set.update(emails)
+        # Core metrics
+        true_positives = len(redacted & ground_truth)
+        false_positives = len(redacted - ground_truth)
+        false_negatives = len(ground_truth - redacted)
 
-            # IPv4 addresses
-            ipv4s = re.findall(RedactionGrader.PATTERNS["ipv4"], log)
-            # Filter out broadcast addresses
-            ipv4s = [ip for ip in ipv4s if ip != "255.255.255.255"]
-            pii_set.update(ipv4s)
+        precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0.0
+        recall = true_positives / total
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
 
-        elif task == TaskEnum.TASK_2:
-            # Usernames in quotes: User 'Name'
-            usernames = re.findall(RedactionGrader.PATTERNS["username"], log, re.IGNORECASE)
-            pii_set.update(usernames)
+        # Discovery rate
+        discovered_correct = len(discovered & ground_truth)
+        discovery_rate = discovered_correct / total
 
-        elif task == TaskEnum.TASK_3:
-            # OpenAI-style tokens (sk_live_*, sk_test_*)
-            tokens = re.findall(RedactionGrader.PATTERNS["token_sk"], log, re.IGNORECASE)
-            pii_set.update(tokens)
+        # Efficiency
+        steps_saved = max(0, steps_budget - steps_used)
+        efficiency = steps_saved / steps_budget if steps_budget > 0 else 0.0
 
-            # AWS-like keys (20 alphanumeric characters)
-            aws_keys = re.findall(RedactionGrader.PATTERNS["token_aws"], log)
-            pii_set.update(aws_keys)
+        # Secret handling
+        secrets_found = len(secret_tokens & redacted)
+        secrets_missed = len(secret_tokens - redacted)
+        secrets_total = len(secret_tokens)
 
-            # Secret assignments (key=value format)
-            secrets = re.findall(
-                RedactionGrader.PATTERNS["token_secret"], log, re.IGNORECASE
-            )
-            pii_set.update(secrets)
+        # Composite score
+        f1_component = f1 * 0.70
+        discovery_component = discovery_rate * 0.20
+        recall_component = recall * 0.10
+        efficiency_bonus = efficiency * 0.05
+        secret_penalty = -0.30 * secrets_missed
 
-        return pii_set
+        total_score = max(0.0, min(1.0,
+            f1_component + discovery_component + recall_component + efficiency_bonus + secret_penalty
+        ))
 
-    @staticmethod
-    def calculate_metrics(
-        detected_pii: Set[str], ground_truth: Set[str]
-    ) -> Tuple[float, float, float, float]:
-        """
-        Calculate precision, recall, F1-score, and over-redaction ratio.
-
-        Args:
-            detected_pii: Set of PII the agent detected
-            ground_truth: Set of actual PII in the log
-
-        Returns:
-            Tuple of (precision, recall, f1_score, over_redaction_ratio)
-        """
-        if not ground_truth:
-            # No PII in the log - perfect if agent also found nothing
-            if detected_pii:
-                return 0.0, 1.0, 0.0, 1.0
-            else:
-                return 1.0, 1.0, 1.0, 0.0
-
-        true_positives = len(detected_pii & ground_truth)
-        false_positives = len(detected_pii - ground_truth)
-        false_negatives = len(ground_truth - detected_pii)
-
-        precision = true_positives / len(detected_pii) if detected_pii else 0.0
-        recall = true_positives / len(ground_truth) if ground_truth else 0.0
-        f1_score = (
-            2 * (precision * recall) / (precision + recall)
-            if (precision + recall) > 0
-            else 0.0
-        )
-        over_redaction_ratio = false_positives / len(detected_pii) if detected_pii else 0.0
-
-        return precision, recall, f1_score, over_redaction_ratio
-
-    @staticmethod
-    def shape_reward(
-        f1_score: float,
-        recall: float,
-        precision: float,
-        over_redaction_ratio: float,
-        false_negatives: int,
-        task: TaskEnum,
-    ) -> Tuple[float, Dict[str, float], str]:
-        """
-        Apply reward shaping based on redaction quality.
-
-        Reward structure:
-        - 1.0 (perfect): F1==1.0
-        - 0.8 (excellent): Recall>=0.9, Precision>=0.8
-        - 0.5 (good): F1>=0.6
-        - 0.2 (partial): Otherwise
-        - MINUS 1.0 (critical): Missed secrets in Task 3
-        - MINUS 0.3 (penalty): Over-redacting >20% non-PII
-
-        Args:
-            f1_score: F1-score (0.0-1.0)
-            recall: Recall metric (0.0-1.0)
-            precision: Precision metric (0.0-1.0)
-            over_redaction_ratio: Ratio of false positives (0.0-1.0)
-            false_negatives: Count of missed PII
-            task: Task type for critical secret penalty
-
-        Returns:
-            Tuple of (base_reward, penalties_dict, feedback_message)
-        """
-        penalties = {}
-        feedback = ""
-
-        # Base reward from F1 score
-        if f1_score == 1.0:
-            base_reward = 1.0
-            feedback = "Perfect redaction! All PII detected and redacted correctly."
-        elif recall >= 0.9 and precision >= 0.8:
-            base_reward = 0.8
-            feedback = "Excellent redaction. Minor improvement possible."
-        elif f1_score >= 0.6:
-            base_reward = 0.5
-            feedback = "Good effort. Consider improving detection."
-        else:
-            base_reward = 0.2
-            feedback = "Partial progress. Review detection logic."
-
-        # Critical penalty: Missed secrets in Task 3
-        if false_negatives > 0 and task == TaskEnum.TASK_3:
-            penalties["missed_secrets"] = -1.0
-            feedback += " ⚠️ CRITICAL: High-risk secret not redacted!"
-
-        # Over-redaction penalty: Destroying log utility
-        if over_redaction_ratio > 0.2:
-            penalties["over_redacting"] = -0.3
-            feedback += " ⚠️ Caution: Over-redacting useful data (>20%)."
-
-        return base_reward, penalties, feedback
-
-    @classmethod
-    def grade(
-        cls, detected_redactions: list, raw_log: str, task: TaskEnum
-    ) -> Dict:
-        """
-        Complete grading pipeline: extract ground truth → calculate metrics → shape reward.
-
-        Args:
-            detected_redactions: List of dicts with 'original' field
-            raw_log: Raw log content
-            task: Task type
-
-        Returns:
-            Dict with keys:
-            - base_reward: Raw score before penalties
-            - penalties: Dict of penalty_name -> penalty_value
-            - total_reward: base_reward + sum(penalties)
-            - metrics: Dict with precision, recall, f1_score, over_redaction_ratio
-            - feedback: Human-readable feedback message
-        """
-        # Extract detected PII
-        detected_pii = {r["original"] for r in detected_redactions}
-
-        # Extract ground truth
-        ground_truth = cls.extract_ground_truth(raw_log, task)
-
-        # Calculate metrics
-        precision, recall, f1_score, over_redaction_ratio = cls.calculate_metrics(
-            detected_pii, ground_truth
-        )
-
-        # Count false negatives
-        false_negatives = len(ground_truth - detected_pii)
-
-        # Shape reward
-        base_reward, penalties, feedback = cls.shape_reward(
-            f1_score, recall, precision, over_redaction_ratio, false_negatives, task
-        )
-
-        total_reward = base_reward + sum(penalties.values())
+        # Letter grade
+        grade = InvestigationGrader._letter_grade(total_score)
 
         return {
-            "base_reward": base_reward,
-            "penalties": penalties,
-            "total_reward": total_reward,
-            "metrics": {
-                "precision": precision,
-                "recall": recall,
-                "f1_score": f1_score,
-                "over_redaction_ratio": over_redaction_ratio,
-            },
-            "feedback": feedback,
+            # Core metrics
+            "precision": round(precision, 4),
+            "recall": round(recall, 4),
+            "f1_score": round(f1, 4),
+            # Discovery
+            "discovery_rate": round(discovery_rate, 4),
+            "discovered_count": discovered_correct,
+            # Efficiency
+            "efficiency": round(efficiency, 4),
+            "steps_used": steps_used,
+            "steps_budget": steps_budget,
+            "steps_saved": steps_saved,
+            # Secrets
+            "secrets_found": secrets_found,
+            "secrets_missed": secrets_missed,
+            "secrets_total": secrets_total,
+            # Counts
+            "true_positives": true_positives,
+            "false_positives": false_positives,
+            "false_negatives": false_negatives,
+            "total_pii": total,
+            # Score components
+            "f1_component": round(f1_component, 4),
+            "discovery_component": round(discovery_component, 4),
+            "recall_component": round(recall_component, 4),
+            "efficiency_bonus": round(efficiency_bonus, 4),
+            "secret_penalty": round(secret_penalty, 4),
+            # Final
+            "total_score": round(total_score, 4),
+            "grade": grade,
         }
 
+    @staticmethod
+    def _letter_grade(score: float) -> str:
+        """Assign a letter grade based on total score."""
+        if score >= 0.95:
+            return "S"   # Perfect
+        elif score >= 0.85:
+            return "A"   # Excellent
+        elif score >= 0.70:
+            return "B"   # Good
+        elif score >= 0.50:
+            return "C"   # Adequate
+        elif score >= 0.30:
+            return "D"   # Poor
+        else:
+            return "F"   # Failed
 
-# Convenience function for simple grading
-def grade_redaction(detected_redactions: list, raw_log: str, task: TaskEnum) -> Dict:
-    """
-    Simple interface to grade a redaction.
+    @staticmethod
+    def generate_feedback(metrics: Dict[str, Any]) -> str:
+        """Generate human-readable feedback from metrics."""
+        parts = []
+        grade = metrics["grade"]
+        score = metrics["total_score"]
 
-    Usage:
-        result = grade_redaction(
-            detected_redactions=[{"original": "user@example.com"}],
-            raw_log="User user@example.com logged in",
-            task=TaskEnum.TASK_1
-        )
-        print(result["total_reward"])  # 1.0
-    """
-    return RedactionGrader.grade(detected_redactions, raw_log, task)
+        parts.append(f"Grade: {grade} ({score:.1%})")
+
+        # F1 feedback
+        f1 = metrics["f1_score"]
+        if f1 >= 0.95:
+            parts.append("Redaction accuracy: Outstanding.")
+        elif f1 >= 0.80:
+            parts.append("Redaction accuracy: Strong. Minor improvements possible.")
+        elif f1 >= 0.60:
+            parts.append("Redaction accuracy: Moderate. Missed several items.")
+        else:
+            parts.append("Redaction accuracy: Needs significant improvement.")
+
+        # Discovery feedback
+        dr = metrics["discovery_rate"]
+        if dr < 0.5:
+            parts.append(f"Investigation depth: Shallow ({dr:.0%}). Explore more entities.")
+        elif dr < 0.8:
+            parts.append(f"Investigation depth: Moderate ({dr:.0%}). Go deeper.")
+        else:
+            parts.append(f"Investigation depth: Thorough ({dr:.0%}).")
+
+        # Secret feedback
+        if metrics["secrets_missed"] > 0:
+            parts.append(f"⚠️ CRITICAL: {metrics['secrets_missed']} secret(s) missed! Heavy penalty applied.")
+        elif metrics["secrets_total"] > 0:
+            parts.append(f"✅ All {metrics['secrets_total']} secret(s) found and redacted.")
+
+        # Efficiency
+        if metrics["steps_saved"] > 2:
+            parts.append(f"Efficient: {metrics['steps_saved']} steps saved (bonus applied).")
+
+        return " | ".join(parts)

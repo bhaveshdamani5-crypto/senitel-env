@@ -1,537 +1,131 @@
 """
-demo.py — Interactive Gradio Demo for Sentinel-Log-Shield
+demo.py — Standalone demonstration of the Sentinel-Log-Shield v2 environment.
 
-Provides a web interface for Hugging Face Spaces with:
-- Real-time task execution
-- Step-by-step output display
-- Visual success/failure indicators
-- Custom log input option
+Runs a complete investigation episode and displays step-by-step results.
+Can be used to validate the environment works correctly.
 """
 
-import gradio as gr
 import sys
 import os
-from env import LogSanitizerEnvironment, TaskEnum
-from models import RedactionAction
+sys.path.insert(0, os.path.dirname(__file__))
 
-# Color codes for terminal-style output
-GREEN = "#4CAF50"
-RED = "#f44336"
-BLUE = "#2196F3"
-YELLOW = "#FFC107"
+from env import SentinelEnvironment
+from models import AgentAction, ActionType, Difficulty
+from grader import InvestigationGrader
+import re
 
 
-def format_output(text: str, color: str = "white") -> str:
-    """Format output with color for display."""
-    return f"<span style='color:{color}; font-family:monospace'>{text}</span>"
+def extract_pii_from_text(logs):
+    """Simple PII extraction for demo purposes."""
+    found = []
+    seen = set()
+    for log in logs:
+        for m in re.finditer(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b', log):
+            if m.group() not in seen:
+                found.append({"original": m.group(), "type": "email"})
+                seen.add(m.group())
+        for m in re.finditer(r'\b(?:\d{1,3}\.){3}\d{1,3}\b', log):
+            if m.group() not in seen and m.group() != "255.255.255.255":
+                found.append({"original": m.group(), "type": "ip"})
+                seen.add(m.group())
+        for m in re.finditer(r"User\s*['\"]([A-Za-z][A-Za-z0-9_-]*)['\"]", log, re.IGNORECASE):
+            if m.group(1) not in seen:
+                found.append({"original": m.group(1), "type": "username"})
+                seen.add(m.group(1))
+        for m in re.finditer(r"user=([A-Za-z][A-Za-z0-9_-]+)", log, re.IGNORECASE):
+            if m.group(1) not in seen:
+                found.append({"original": m.group(1), "type": "username"})
+                seen.add(m.group(1))
+        for pattern in [r'\bsk_[a-zA-Z0-9_]{10,}\b', r'\bghp_[a-zA-Z0-9]{10,}\b',
+                        r'\bhf_[a-zA-Z0-9]{10,}\b', r'\bAKIA[A-Z0-9]{12,}\b',
+                        r'\beyJ[a-zA-Z0-9_-]{20,}\b', r'api_key_[A-Za-z0-9]{10,}',
+                        r'(?:key|token|secret|credential)\s*=\s*(\S{8,})']:
+            for m in re.finditer(pattern, log, re.IGNORECASE):
+                v = m.group(1) if m.lastindex else m.group(0)
+                if v not in seen and len(v) > 5:
+                    found.append({"original": v, "type": "token"})
+                    seen.add(v)
+    return found
 
 
-def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
-    """
-    Run a complete demo episode.
+def run_demo(difficulty="medium"):
+    """Run a demonstration episode showing the investigation flow."""
+    print(f"\n{'=' * 60}")
+    print(f"  SENTINEL-LOG-SHIELD v2 DEMO — {difficulty.upper()}")
+    print(f"{'=' * 60}\n")
 
-    Args:
-        task_choice: Selected task ("Task 1: Email & IPv4", etc.)
+    env = SentinelEnvironment()
+    reset = env.reset(difficulty=difficulty)
+    obs = reset.observation
 
-    Returns:
-        Tuple of (output_log, status_message, score)
-    """
-    try:
-        # Map choice to TaskEnum
-        task_map = {
-            "Task 1: Email & IPv4 Detection (Easy)": TaskEnum.TASK_1,
-            "Task 2: Username Extraction (Medium)": TaskEnum.TASK_2,
-            "Task 3: Secret Detection (Hard)": TaskEnum.TASK_3,
-        }
+    print(f"📋 Scenario: {obs.total_pii_to_find} PII items hidden across investigation layers")
+    print(f"⏱️  Budget: {obs.steps_remaining} steps")
+    print(f"📝 Initial visible logs ({len(obs.visible_logs)}):")
+    for log in obs.visible_logs:
+        print(f"   {log}")
+    print()
 
-        task = task_map.get(task_choice, TaskEnum.TASK_1)
+    # Step 1: SCAN
+    print("─── Step 1: SCAN ───")
+    result = env.step(AgentAction(action_type=ActionType.SCAN))
+    obs = result.observation
+    print(f"  Discovered {len(obs.discovered_entities)} entities: {obs.discovered_entities}")
+    print(f"  Investigation targets: {obs.investigation_targets}")
+    print(f"  Reward: {result.reward.total_reward:.3f}")
+    print(f"  Steps remaining: {obs.steps_remaining}")
+    print()
 
-        # Initialize environment
-        env = LogSanitizerEnvironment()
-        step_summaries = []
+    # Step 2+: INVESTIGATE
+    step = 2
+    investigated = set()
+    while obs.steps_remaining > 2 and obs.investigation_targets:
+        target = obs.investigation_targets[0]
+        if target in investigated:
+            break
+        investigated.add(target)
+        print(f"─── Step {step}: INVESTIGATE '{target}' ───")
+        result = env.step(AgentAction(action_type=ActionType.INVESTIGATE, target_entity=target))
+        obs = result.observation
+        print(f"  Discovered entities: {len(obs.discovered_entities)}")
+        print(f"  New visible logs: {len(obs.visible_logs)} total")
+        print(f"  Reward: {result.reward.total_reward:.3f} | {result.reward.feedback}")
+        print(f"  Steps remaining: {obs.steps_remaining}")
+        print()
+        step += 1
 
-        # Reset environment
-        reset_resp = env.reset()
-        observation = reset_resp.observation
+    # REDACT
+    if obs.steps_remaining > 1:
+        pii_items = extract_pii_from_text(obs.visible_logs)
+        # Also add from discovered entities
+        seen = {p["original"] for p in pii_items}
+        for e in obs.discovered_entities:
+            if e not in seen:
+                pii_items.append({"original": e, "type": "unknown"})
+                seen.add(e)
 
-        # Run full episode (up to max_steps)
-        step_num = 0
-        done = False
-        rewards = []
-        total_steps = 3
+        print(f"─── Step {step}: REDACT {len(pii_items)} items ───")
+        result = env.step(AgentAction(action_type=ActionType.REDACT, redactions=pii_items))
+        obs = result.observation
+        print(f"  Coverage: {obs.pii_found_count}/{obs.total_pii_to_find}")
+        print(f"  Reward: {result.reward.total_reward:.3f} | {result.reward.feedback}")
+        print(f"  Steps remaining: {obs.steps_remaining}")
+        print()
+        step += 1
 
-        while not done and step_num < total_steps:
-            step_num += 1
-            # Simulate agent redaction (regex fallback mode)
-            if task == TaskEnum.TASK_1:
-                # Email & IPv4
-                import re
-                
-                log = observation.raw_log
-                redactions = []
+    # SUBMIT
+    print(f"─── Step {step}: SUBMIT ───")
+    result = env.step(AgentAction(action_type=ActionType.SUBMIT))
+    obs = result.observation
+    print(f"  📊 FINAL RESULTS:")
+    for k, v in result.reward.metrics.items():
+        print(f"     {k}: {v}")
+    print(f"  Total Reward: {result.reward.total_reward:.3f}")
+    print(f"  Feedback: {result.reward.feedback}")
+    print()
 
-                email_pattern = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
-                for match in re.finditer(email_pattern, log):
-                    redactions.append({
-                        "type": "email",
-                        "original": match.group(),
-                        "redacted": "[EMAIL_REDACTED]"
-                    })
-                    log = log.replace(match.group(), "[EMAIL_REDACTED]", 1)
-
-                ipv4_pattern = (
-                    r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
-                )
-                for match in re.finditer(ipv4_pattern, log):
-                    if match.group() != "255.255.255.255":
-                        redactions.append({
-                            "type": "ipv4",
-                            "original": match.group(),
-                            "redacted": "[IP_REDACTED]"
-                        })
-                        log = log.replace(match.group(), "[IP_REDACTED]", 1)
-
-                redacted_log = log
-
-            elif task == TaskEnum.TASK_2:
-                # Username extraction
-                import re
-                
-                log = observation.raw_log
-                redactions = []
-                pattern = r"User\s+'([A-Za-z]+)'"
-                
-                for match in re.finditer(pattern, log, re.IGNORECASE):
-                    username = match.group(1)
-                    redactions.append({
-                        "type": "username",
-                        "original": username,
-                        "redacted": "[USER_REDACTED]"
-                    })
-                    log = log.replace(username, "[USER_REDACTED]")
-                
-                redacted_log = log
-
-            else:  # TASK_3
-                # Secret detection
-                import re
-                
-                log = observation.raw_log
-                redactions = []
-                patterns = [
-                    r"\bsk_[a-z0-9_]{20,}\b",
-                    r"\b[A-Z0-9]{20}\b",
-                    r"(?:secret|key|password|api_key|token)\s*=\s*(\S+)",
-                ]
-
-                for pattern in patterns:
-                    for match in re.finditer(pattern, log, re.IGNORECASE):
-                        token = match.group(1) if "(" in pattern else match.group(0)
-                        if len(token) > 5:
-                            redactions.append({
-                                "type": "token",
-                                "original": token[:10] + "...",
-                                "redacted": "[TOKEN_REDACTED]"
-                            })
-                            log = log.replace(token, "[TOKEN_REDACTED]")
-                
-                redacted_log = log
-
-        # Create action and step
-        action = RedactionAction(
-            log_id=observation.log_id,
-            redactions=redactions,
-            redacted_log=redacted_log,
-            confidence=0.95 if redactions else 0.5,
-        )
-
-        # Step environment
-        step_resp = env.step(action)
-        observation = step_resp.observation
-        reward = step_resp.reward
-        done = step_resp.done
-
-        # Save neat per-step summary for table rendering
-        step_summaries.append(
-            {
-                "step": step_num,
-                "found": len(redactions),
-                "types": ", ".join([r["type"] for r in redactions]) if redactions else "-",
-                "reward": reward.total_reward,
-                "f1": reward.metrics["f1_score"],
-                "precision": reward.metrics["precision"],
-                "recall": reward.metrics["recall"],
-                "feedback": reward.feedback,
-            }
-        )
-
-        rewards.append(reward.total_reward)
-
-        final_score = sum(rewards) / len(rewards) if rewards else 0.0
-        success = final_score >= 0.70
-        
-        rows = []
-        for item in step_summaries:
-            rows.append(
-                "<tr>"
-                f"<td>{item['step']}</td>"
-                f"<td>{item['found']}</td>"
-                f"<td>{item['types']}</td>"
-                f"<td>{item['reward']:.2f}</td>"
-                f"<td>{item['f1']:.2f}</td>"
-                f"<td>{item['precision']:.2f}</td>"
-                f"<td>{item['recall']:.2f}</td>"
-                "</tr>"
-            )
-        output_html = f"""
-        <div style="padding:10px 12px;">
-          <h3 style="margin:0 0 8px 0; color:#ffffff;">Episode Results</h3>
-          <p style="margin:0 0 10px 0; color:#d8deea;">
-            <strong>Task:</strong> {observation.task.value} &nbsp;|&nbsp;
-            <strong>Expected:</strong> {", ".join(observation.pii_types_expected)}
-          </p>
-          <p style="margin:0 0 10px 0; color:#d8deea;"><strong>Raw Log:</strong> {observation.raw_log}</p>
-          <div style="overflow-x:auto;">
-            <table style="width:100%; border-collapse:collapse; font-size:13px;">
-              <thead>
-                <tr style="background:#111827; color:#f5f7ff;">
-                  <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Step</th>
-                  <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Found</th>
-                  <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Types</th>
-                  <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Reward</th>
-                  <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">F1</th>
-                  <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Precision</th>
-                  <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Recall</th>
-                </tr>
-              </thead>
-              <tbody>
-                {"".join(rows)}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        """
-
-        # Create status message
-        status_msg = (
-            f"<h3 style='margin:0; color:{GREEN if success else RED};'>"
-            f"{'Success' if success else 'Needs Improvement'}</h3>"
-            f"<p style='margin:.4rem 0; color:#eef2ff;'>Final Score: <strong>{final_score:.2f}</strong>/1.00</p>"
-            f"<p style='margin:.2rem 0; color:#d8deea;'>Steps: {step_num}</p>"
-        )
-
-        return output_html, status_msg, final_score
-
-    except Exception as e:
-        error_msg = f"<h3 style='margin:0; color:{RED};'>Error</h3><p style='margin:.4rem 0; color:#eef2ff;'>{str(e)}</p>"
-        return format_output(f"Error: {str(e)}", RED), error_msg, 0.0
-
-
-def create_demo():
-    """Create Gradio interface with simple, clean styling."""
-    premium_css = """
-    .gradio-container {
-      font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif !important;
-      background: #0f1117 !important;
-      color: #e6e8ee !important;
-      animation: appFade .35s ease-out;
-    }
-    .gradio-container .block,
-    .gradio-container .panel,
-    .gradio-container .form {
-      border: 1px solid rgba(255,255,255,0.10) !important;
-      border-radius: 12px !important;
-      background: #161b22 !important;
-      box-shadow: none !important;
-      transition: border-color .22s ease, transform .22s ease, box-shadow .22s ease;
-    }
-    .gradio-container .block:hover,
-    .gradio-container .panel:hover,
-    .gradio-container .form:hover {
-      border-color: rgba(255,255,255,0.20) !important;
-      box-shadow: 0 8px 22px rgba(0,0,0,0.20) !important;
-    }
-    .top-shell {
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 14px;
-      padding: 16px 16px 10px;
-      background: linear-gradient(180deg, #151b27 0%, #121720 100%);
-      margin-bottom: 12px;
-      animation: riseIn .45s ease-out;
-    }
-    .gradio-container .prose,
-    .gradio-container .prose p,
-    .gradio-container label {
-      color: #dbe3ef !important;
-    }
-    .gradio-container .prose h1,
-    .gradio-container .prose h2,
-    .gradio-container .prose h3 {
-      color: #ffffff !important;
-    }
-    .gradio-container .prose li,
-    .gradio-container .prose strong,
-    .gradio-container .prose a {
-      color: #e8eefb !important;
-    }
-    .gradio-container .prose a {
-      text-decoration: underline;
-      text-underline-offset: 2px;
-    }
-    .gradio-container button.primary {
-      background: linear-gradient(90deg, #5E6AD2, #6872D9) !important;
-      background-size: 140% 100% !important;
-      color: #fff !important;
-      border: none !important;
-      border-radius: 10px !important;
-      font-weight: 600 !important;
-      min-height: 44px !important;
-      letter-spacing: .01em !important;
-      transition: transform .18s ease, box-shadow .18s ease, background-position .25s ease !important;
-    }
-    .gradio-container button.primary:hover {
-      background-position: 100% 0 !important;
-      transform: translateY(-1px);
-      box-shadow: 0 8px 20px rgba(94,106,210,0.28);
-    }
-    .gradio-container .block button.primary {
-      box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset;
-    }
-    .gradio-container button.primary:active {
-      transform: translateY(0) scale(0.99);
-    }
-    .gradio-container input,
-    .gradio-container textarea,
-    .gradio-container select {
-      background: #0f141c !important;
-      color: #f2f6ff !important;
-      border: 1px solid rgba(255,255,255,0.12) !important;
-      border-radius: 10px !important;
-    }
-    .gradio-container .prose table,
-    .gradio-container .prose th,
-    .gradio-container .prose td {
-      color: #f2f6ff !important;
-      border-color: rgba(255,255,255,0.16) !important;
-    }
-    .gradio-container .prose th {
-      background: #111827 !important;
-      font-weight: 700 !important;
-    }
-    .gradio-container .prose td {
-      background: #161b22 !important;
-    }
-    .gradio-container input[type="number"] {
-      color: #ffffff !important;
-      font-weight: 700 !important;
-      opacity: 1 !important;
-    }
-    .gradio-container .prose table td {
-      padding: 8px !important;
-      font-size: 13px !important;
-    }
-    .gradio-container .prose table tbody tr:nth-child(odd) td {
-      background: #141a23 !important;
-    }
-    .gradio-container .prose table tbody tr:nth-child(even) td {
-      background: #10161f !important;
-    }
-    .gradio-container .prose table tbody tr:hover td {
-      background: #1a2330 !important;
-    }
-    .hero-title {
-      margin: 0;
-      font-size: clamp(2rem, 3vw, 2.7rem);
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      color: #ffffff;
-      line-height: 1.15;
-      animation: riseIn .50s ease-out;
-    }
-    .hero-sub {
-      margin-top: .45rem;
-      color: #c6cfdb;
-      line-height: 1.6;
-      max-width: 820px;
-      font-size: .98rem;
-      animation: riseIn .60s ease-out;
-    }
-    .hero-badge-row {
-      margin-top: 10px;
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .hero-badge {
-      padding: 4px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.14);
-      background: rgba(255,255,255,0.04);
-      color: #d9e1ed;
-      font-size: 12px;
-      font-weight: 500;
-      transition: background .2s ease, border-color .2s ease, transform .2s ease;
-    }
-    .hero-badge:hover {
-      background: rgba(255,255,255,0.10);
-      border-color: rgba(255,255,255,0.20);
-      transform: translateY(-1px);
-    }
-    .gradio-container label[for^="component-"] {
-      font-weight: 600 !important;
-      color: #e8edf8 !important;
-    }
-    /* Segmented task picker */
-    .gradio-container .wrap .form {
-      padding-top: 8px !important;
-    }
-    .gradio-container .wrap .form label {
-      color: #eaf0fb !important;
-    }
-    .gradio-container .wrap .form .wrap {
-      gap: 8px !important;
-    }
-    .gradio-container .wrap .form label span {
-      font-weight: 600 !important;
-    }
-    .gradio-container .wrap .form input[type="radio"] + span {
-      display: inline-flex !important;
-      align-items: center !important;
-      min-height: 38px !important;
-      border-radius: 10px !important;
-      border: 1px solid rgba(255,255,255,0.14) !important;
-      background: #171d26 !important;
-      color: #e9effb !important;
-      padding: 0 12px !important;
-      transition: all .18s ease !important;
-    }
-    .gradio-container .wrap .form input[type="radio"]:checked + span {
-      background: #5E6AD2 !important;
-      border-color: rgba(255,255,255,0.30) !important;
-      color: #ffffff !important;
-    }
-    .gradio-container .wrap .form input[type="radio"] + span:hover {
-      background: #202838 !important;
-    }
-    /* Hide default footer links for cleaner presentation */
-    .gradio-container footer {
-      display: none !important;
-    }
-    @keyframes appFade {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-    @keyframes riseIn {
-      from { opacity: 0; transform: translateY(6px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    """
-    theme = gr.themes.Soft(
-        primary_hue="indigo",
-        secondary_hue="cyan",
-        neutral_hue="slate",
-    )
-
-    with gr.Blocks(
-        title="Sentinel-Log-Shield: OpenEnv Demo",
-    ) as demo:
-
-        gr.HTML(
-            """
-            <div class="top-shell">
-              <h1 class="hero-title">Sentinel-Log-Shield Demo</h1>
-              <p class="hero-sub">
-                Clean evaluation interface for running all tasks and presenting results clearly to judges.
-              </p>
-              <div class="hero-badge-row">
-                <span class="hero-badge">OpenEnv ready</span>
-                <span class="hero-badge">3 difficulty levels</span>
-                <span class="hero-badge">Precision/Recall/F1 scoring</span>
-              </div>
-            </div>
-            """
-        )
-
-        # Controls
-        with gr.Row():
-            with gr.Column(scale=1):
-                task_choice = gr.Radio(
-                    choices=[
-                        "Task 1: Email & IPv4 Detection (Easy)",
-                        "Task 2: Username Extraction (Medium)",
-                        "Task 3: Secret Detection (Hard)",
-                    ],
-                    value="Task 1: Email & IPv4 Detection (Easy)",
-                    label="📋 Select Task",
-                )
-                run_button = gr.Button(
-                    "▶ Run Demo",
-                    variant="primary",
-                    size="lg",
-                )
-
-        # Output area
-        with gr.Row():
-            with gr.Column():
-                output_display = gr.HTML(
-                    value=format_output(
-                        "Click 'Run Demo' to start...",
-                        BLUE,
-                    ),
-                )
-
-        # Status and score
-        with gr.Row():
-            with gr.Column():
-                status_display = gr.HTML(
-                    value="<p>Ready to run...</p>",
-                )
-            with gr.Column():
-                score_display = gr.Number(
-                    label="📈 Episode Score",
-                    value=0.0,
-                    interactive=False,
-                )
-
-        gr.Markdown(
-            """
-            ### How to evaluate this demo
-            - Pick a task and run the full episode.
-            - Inspect extracted entities, reward feedback, and final score.
-            - Use score bands to judge redaction reliability:
-              - **1.00**: ideal extraction with utility preserved
-              - **0.80+**: high confidence behavior
-              - **0.50+**: partial correctness
-              - **<0.50**: substantial misses
-
-            Repository: https://github.com/bhaveshdamani5-crypto/senitel-env
-            """
-        )
-
-        # Connect button to function
-        run_button.click(
-            fn=run_demo_episode,
-            inputs=[task_choice],
-            outputs=[output_display, status_display, score_display],
-        )
-
-        # Auto-run on startup (optional)
-        demo.load(
-            fn=run_demo_episode,
-            inputs=[task_choice],
-            outputs=[output_display, status_display, score_display],
-        )
-
-    return demo, premium_css, theme
+    return result
 
 
 if __name__ == "__main__":
-    demo, premium_css, theme = create_demo()
-    demo.launch(
-        server_name="0.0.0.0",
-        server_port=7860,
-        show_error=True,
-        share=False,
-        css=premium_css,
-        theme=theme,
-    )
+    for diff in ["easy", "medium", "hard"]:
+        run_demo(diff)

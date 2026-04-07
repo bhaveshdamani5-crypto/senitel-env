@@ -1,6 +1,5 @@
 FROM python:3.10-slim
 
-# Set working directory
 WORKDIR /app
 
 # Install system dependencies
@@ -33,7 +32,7 @@ ENV PYTHONUNBUFFERED=1
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:7860/ || exit 1
+    CMD curl -f http://localhost:7860/health || exit 1
 
-# Run FastAPI app (custom Swagger + mounted demo at /demo)
+# Run FastAPI server
 CMD ["python", "server.py"]

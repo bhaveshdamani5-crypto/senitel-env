@@ -1,88 +1,107 @@
 ---
-title: Sentinel-Log-Shield OpenEnv Demo
+title: Sentinel-Log-Shield OpenEnv Environment
 emoji: 🔐
 colorFrom: indigo
 colorTo: purple
 sdk: docker
 pinned: false
-tags:
-  - openenv
 ---
 
-# Sentinel-Log-Shield
+# Sentinel-Log-Shield v2
 
-**Enterprise-grade OpenEnv environment for intelligent log sanitization and risk-aware PII redaction.**
+**Interactive Security Investigation RL Environment — Built for OpenEnv**
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue)](#)
 [![FastAPI](https://img.shields.io/badge/api-fastapi-009688)](#)
 [![OpenEnv](https://img.shields.io/badge/framework-openenv-orange)](#)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
-## Why This Project Stands Out
+## What Makes This a Real RL Environment
 
-- Detects sensitive values across a progressive 3-task benchmark.
-- Preserves operational usefulness of logs while removing high-risk tokens.
-- Supports both LLM reasoning mode and stable regex fallback mode.
-- Returns explainable reward metrics (precision/recall/F1/over-redaction).
-- Deploys cleanly to Hugging Face Spaces using Docker.
+Unlike classification tasks wrapped in `step()`, this environment has **genuine RL dynamics**:
 
-## Live Endpoints
+| RL Property | Implementation |
+|---|---|
+| **State transitions** | Investigating entity X reveals connected logs and hidden entities |
+| **Sequential decisions** | Each discovery opens new investigation paths |
+| **Hidden information** | Secrets are buried in deep layers — only found through multi-step investigation |
+| **Strategy required** | Limited step budget forces explore vs. exploit tradeoffs |
+| **Procedural generation** | Every episode is unique — 50+ templates, random PII pools, entity graphs |
+| **Non-trivial optimal policy** | Agent must learn when to scan, what to investigate, and when to stop |
 
-- GitHub: `https://github.com/bhaveshdamani5-crypto/senitel-env`
-- Hugging Face Space: `https://huggingface.co/spaces/bhavesh657/senitel-env2`
-- API docs (once deployed): `/docs`
-- Technical docs: `/redoc`
+## How It Works
 
-## Architecture Overview
+The agent plays a **security analyst investigating a data breach**. The environment procedurally generates a scenario with users, IPs, emails, and hidden secrets linked through an entity graph.
 
-```mermaid
-flowchart LR
-    A[Raw Enterprise Log] --> B[Observation Builder]
-    B --> C{Inference Strategy}
-    C -->|HF Token Available| D[LLM Redaction]
-    C -->|No Token| E[Regex Fallback]
-    D --> F[RedactionAction]
-    E --> F
-    F --> G[Environment Step Evaluator]
-    G --> H[Reward Object]
-    H --> I[Metrics + Feedback]
+```
+reset() → Agent sees initial alert logs (surface layer)
+   ↓
+step(SCAN) → Extracts visible PII entities from current logs
+   ↓
+step(INVESTIGATE, "alice") → Reveals logs connected to "alice"
+   ↓                          (may expose hidden tokens/secrets)
+step(INVESTIGATE, "10.0.0.5") → Reveals logs from that IP
+   ↓                             (may connect to other users)
+step(REDACT, [...]) → Submits discovered PII for scoring
+   ↓
+step(SUBMIT) → Ends episode, receives comprehensive score
 ```
 
-## Task Progression Design
+**Key constraint:** The agent has a **limited step budget** (8-12 steps depending on difficulty). Surface scanning finds ~40% of PII. Full investigation finds 100%. The agent must decide: explore deeper or submit early?
 
-```mermaid
-flowchart TB
-    T1[Task 1<br/>Email + IPv4<br/>Pattern confidence] --> T2[Task 2<br/>Contextual usernames<br/>Semantic sensitivity]
-    T2 --> T3[Task 3<br/>Secrets + credentials<br/>Risk-aware severity]
+## Action Space
+
+| Action | Description | Parameters |
+|---|---|---|
+| `SCAN` | Extract PII from visible logs | None |
+| `INVESTIGATE` | Deep-dive into entity → reveals connected logs | `target_entity` |
+| `REDACT` | Submit PII items for scoring | `redactions: [{original, type}]` |
+| `SUBMIT` | End episode, receive final score | None |
+
+## Observation Space
+
+| Field | Description |
+|---|---|
+| `visible_logs` | Log entries currently visible to the agent |
+| `discovered_entities` | PII entities found so far |
+| `investigation_targets` | Entities available for investigation |
+| `steps_remaining` | Budget countdown |
+| `total_pii_to_find` | How many PII items exist in this scenario |
+| `pii_found_count` | Items correctly redacted so far |
+| `hint` | Environment guidance |
+
+## Reward Structure
+
+| Component | Weight | Description |
+|---|---|---|
+| F1 Score | 70% | Precision/Recall of redacted vs ground truth |
+| Discovery Rate | 20% | Fraction of total PII the agent discovered |
+| Recall | 10% | Raw coverage |
+| Efficiency Bonus | +5% per step saved | Reward for completing under budget |
+| Secret Penalty | -30% per missed | Critical penalty for each missed secret |
+
+## Difficulty Levels
+
+| Level | Users | Layers | Budget | Secrets | Description |
+|---|---|---|---|---|---|
+| Easy | 2 | 2 | 12 | 1 | Shallow investigation, generous budget |
+| Medium | 3 | 3 | 10 | 2 | Moderate depth, balanced budget |
+| Hard | 4 | 4 | 8 | 3 | Deep investigation, tight budget |
+
+## Entity Graph Architecture
+
 ```
+Layer 0 (visible on reset):
+  |-- Log: "Failed login for alice@corp.com from 10.0.0.5"
+  |-- Log: "Suspicious activity from 10.0.0.5"
 
-## Episode Lifecycle
+Layer 1 (revealed by INVESTIGATE("alice") or INVESTIGATE("10.0.0.5")):
+  |-- Log: "User 'alice' accessed secrets vault with token sk_live_abc..."
+  |-- Log: "alice@corp.com connected from 172.16.0.1"
 
-```mermaid
-sequenceDiagram
-    participant Agent
-    participant API as FastAPI/OpenEnv
-    Agent->>API: POST /reset
-    API-->>Agent: Observation(task, raw_log, expected_types, log_id)
-    Agent->>API: POST /step (RedactionAction)
-    API-->>Agent: StepResponse(reward, done, next_observation)
-    Agent->>API: GET /state
-    API-->>Agent: EnvironmentState(stats, history)
-```
-
-## Repository Structure
-
-```text
-senitel-env/
-├── env.py               # Core environment logic (reset/step/state)
-├── models.py            # Pydantic contracts for observation/action/reward
-├── inference.py         # LLM + regex inference runner
-├── server.py            # FastAPI app + premium docs UI
-├── grader.py            # Reward and validation logic
-├── demo.py              # Demo and local validation runner
-├── openenv.yaml         # OpenEnv metadata/spec
-├── Dockerfile           # Space container image
-└── README.md
+Layer 2 (revealed by INVESTIGATE("172.16.0.1")):
+  |-- Log: "Config loaded: aws_secret_key=wJalrXUtn... from 172.16.0.1"
+  |-- Log: "User 'bob' also accessed from 172.16.0.1"
 ```
 
 ## Quick Start
@@ -91,84 +110,85 @@ senitel-env/
 git clone https://github.com/bhaveshdamani5-crypto/senitel-env.git
 cd senitel-env
 pip install -r requirements.txt
-python inference.py
-```
 
-### Optional: Enable LLM Mode
-
-```bash
-export HF_TOKEN="hf_..."
-export API_BASE_URL="https://api-inference.huggingface.co/openai/"
-export MODEL_NAME="meta-llama/Llama-2-70b-chat-hf"
+# Run the baseline agent
 python inference.py
+
+# Run the demo
+python demo.py
+
+# Start the API server
+python server.py
 ```
 
 ## API Usage
 
 ```bash
-uvicorn server:app --host 0.0.0.0 --port 7860 --reload
-```
+# Start server
+uvicorn server:app --host 0.0.0.0 --port 7860
 
-```bash
-curl -X POST http://localhost:7860/reset
-curl http://localhost:7860/health
+# Reset (start new episode)
+curl -X POST "http://localhost:7860/reset?difficulty=medium"
+
+# Scan visible logs
+curl -X POST http://localhost:7860/step \
+  -H "Content-Type: application/json" \
+  -d '{"action_type": "scan"}'
+
+# Investigate an entity
+curl -X POST http://localhost:7860/step \
+  -H "Content-Type: application/json" \
+  -d '{"action_type": "investigate", "target_entity": "alice"}'
+
+# Redact discovered PII
+curl -X POST http://localhost:7860/step \
+  -H "Content-Type: application/json" \
+  -d '{"action_type": "redact", "redactions": [{"original": "alice@corp.com", "type": "email"}]}'
+
+# Submit findings
+curl -X POST http://localhost:7860/step \
+  -H "Content-Type: application/json" \
+  -d '{"action_type": "submit"}'
+
+# Check state
 curl http://localhost:7860/state
+
+# Health check
+curl http://localhost:7860/health
 ```
 
-## OpenEnv Validation Proof
+## Repository Structure
 
-Run the official validator from the project root:
-
-```bash
-python -m openenv.cli validate
+```
+senitel-env/
+|-- env.py             # Core RL environment with procedural generation
+|-- models.py          # Pydantic action/observation/reward schemas
+|-- grader.py          # Hidden ground truth scoring engine
+|-- inference.py       # Baseline agent with investigation strategy
+|-- server.py          # FastAPI server (OpenEnv API)
+|-- demo.py            # Standalone demo script
+|-- openenv.yaml       # OpenEnv environment specification
+|-- Dockerfile         # HF Spaces deployment
+|-- requirements.txt   # Python dependencies
+|-- README.md          # This file
 ```
 
-Expected successful output:
+## Live Deployment
 
-```text
-[OK] senitel-env-deploy: Ready for multi-mode deployment
-```
+- GitHub: https://github.com/bhaveshdamani5-crypto/senitel-env
+- Hugging Face Space: https://huggingface.co/spaces/bhavesh657/senitel-env
+- API Docs: `/docs` (after deployment)
+- Technical Docs: `/redoc`
 
-## Baseline Inference Smoke Run
+## Why This Problem Matters
 
-Run baseline inference (uses `HF_TOKEN` when present, regex fallback otherwise):
+Log sanitization is a **critical real-world challenge**:
+- Enterprise systems generate millions of log entries daily
+- PII (emails, IPs, tokens) frequently leaks into logs
+- Manual redaction doesn't scale; automated detection misses context
+- High-risk secrets (API keys, auth tokens) require deep investigation
 
-```bash
-python inference.py
-```
-
-Latest local smoke-run summary:
-
-```text
-[START] task=task_2 ... [END] success=true score=1.00
-[START] task=task_1 ... [END] success=true score=1.00
-[START] task=task_3 ... [END] success=false score=-0.10
-```
-
-## Deployment Flow (GitHub -> HF Spaces)
-
-```mermaid
-flowchart LR
-    A[Local Development] --> B[Push to GitHub]
-    B --> C[HF Space synced with repo]
-    C --> D[Docker Build]
-    D --> E[Space Running]
-    E --> F[Judge opens /docs and tests endpoints]
-```
-
-## Quality and Reliability
-
-- Typed data contracts via Pydantic.
-- Deterministic fallback behavior when external API is unavailable.
-- Clear endpoint boundaries and structured error handling.
-- Built-in health check for deployment confidence.
-
-## Troubleshooting
-
-- `ModuleNotFoundError`: run `pip install -r requirements.txt`.
-- HF token warning: set `HF_TOKEN`, or run regex fallback mode.
-- Space build issues: verify HF secrets and restart the Space.
-- Endpoint issues: check `/health` first, then `/docs`.
+This environment trains agents to perform **intelligent, strategic investigation** — not just pattern matching.
 
 ## License
 
@@ -176,4 +196,4 @@ MIT License. See `LICENSE`.
 
 ---
 
-Built for high-trust security log processing and OpenEnv evaluation.
+Built for the Meta PyTorch OpenEnv Hackathon x Scaler School of Technology.
