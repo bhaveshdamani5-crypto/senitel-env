@@ -36,105 +36,106 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
     Returns:
         Tuple of (output_log, status_message, score)
     """
-    # Map choice to TaskEnum
-    task_map = {
-        "Task 1: Email & IPv4 Detection (Easy)": TaskEnum.TASK_1,
-        "Task 2: Username Extraction (Medium)": TaskEnum.TASK_2,
-        "Task 3: Secret Detection (Hard)": TaskEnum.TASK_3,
-    }
+    try:
+        # Map choice to TaskEnum
+        task_map = {
+            "Task 1: Email & IPv4 Detection (Easy)": TaskEnum.TASK_1,
+            "Task 2: Username Extraction (Medium)": TaskEnum.TASK_2,
+            "Task 3: Secret Detection (Hard)": TaskEnum.TASK_3,
+        }
 
-    task = task_map.get(task_choice, TaskEnum.TASK_1)
+        task = task_map.get(task_choice, TaskEnum.TASK_1)
 
-    # Initialize environment
-    env = LogSanitizerEnvironment()
-    step_summaries = []
+        # Initialize environment
+        env = LogSanitizerEnvironment()
+        step_summaries = []
 
-    # Reset environment
-    reset_resp = env.reset()
-    observation = reset_resp.observation
+        # Reset environment
+        reset_resp = env.reset()
+        observation = reset_resp.observation
 
-    # Run 3 steps
-    step_num = 0
-    done = False
-    rewards = []
-    total_steps = 3
+        # Run full episode (up to max_steps)
+        step_num = 0
+        done = False
+        rewards = []
+        total_steps = 3
 
-    while not done and step_num < total_steps:
-        step_num += 1
-        # Simulate agent redaction (regex fallback mode)
-        if task == TaskEnum.TASK_1:
-            # Email & IPv4
-            import re
-            
-            log = observation.raw_log
-            redactions = []
+        while not done and step_num < total_steps:
+            step_num += 1
+            # Simulate agent redaction (regex fallback mode)
+            if task == TaskEnum.TASK_1:
+                # Email & IPv4
+                import re
+                
+                log = observation.raw_log
+                redactions = []
 
-            email_pattern = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
-            for match in re.finditer(email_pattern, log):
-                redactions.append({
-                    "type": "email",
-                    "original": match.group(),
-                    "redacted": "[EMAIL_REDACTED]"
-                })
-                log = log.replace(match.group(), "[EMAIL_REDACTED]", 1)
-
-            ipv4_pattern = (
-                r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
-            )
-            for match in re.finditer(ipv4_pattern, log):
-                if match.group() != "255.255.255.255":
+                email_pattern = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
+                for match in re.finditer(email_pattern, log):
                     redactions.append({
-                        "type": "ipv4",
+                        "type": "email",
                         "original": match.group(),
-                        "redacted": "[IP_REDACTED]"
+                        "redacted": "[EMAIL_REDACTED]"
                     })
-                    log = log.replace(match.group(), "[IP_REDACTED]", 1)
+                    log = log.replace(match.group(), "[EMAIL_REDACTED]", 1)
 
-            redacted_log = log
-
-        elif task == TaskEnum.TASK_2:
-            # Username extraction
-            import re
-            
-            log = observation.raw_log
-            redactions = []
-            pattern = r"User\s+'([A-Za-z]+)'"
-            
-            for match in re.finditer(pattern, log, re.IGNORECASE):
-                username = match.group(1)
-                redactions.append({
-                    "type": "username",
-                    "original": username,
-                    "redacted": "[USER_REDACTED]"
-                })
-                log = log.replace(username, "[USER_REDACTED]")
-            
-            redacted_log = log
-
-        else:  # TASK_3
-            # Secret detection
-            import re
-            
-            log = observation.raw_log
-            redactions = []
-            patterns = [
-                r"\bsk_[a-z0-9_]{20,}\b",
-                r"\b[A-Z0-9]{20}\b",
-                r"(?:secret|key|password|api_key|token)\s*=\s*(\S+)",
-            ]
-
-            for pattern in patterns:
-                for match in re.finditer(pattern, log, re.IGNORECASE):
-                    token = match.group(1) if "(" in pattern else match.group(0)
-                    if len(token) > 5:
+                ipv4_pattern = (
+                    r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
+                )
+                for match in re.finditer(ipv4_pattern, log):
+                    if match.group() != "255.255.255.255":
                         redactions.append({
-                            "type": "token",
-                            "original": token[:10] + "...",
-                            "redacted": "[TOKEN_REDACTED]"
+                            "type": "ipv4",
+                            "original": match.group(),
+                            "redacted": "[IP_REDACTED]"
                         })
-                        log = log.replace(token, "[TOKEN_REDACTED]")
-            
-            redacted_log = log
+                        log = log.replace(match.group(), "[IP_REDACTED]", 1)
+
+                redacted_log = log
+
+            elif task == TaskEnum.TASK_2:
+                # Username extraction
+                import re
+                
+                log = observation.raw_log
+                redactions = []
+                pattern = r"User\s+'([A-Za-z]+)'"
+                
+                for match in re.finditer(pattern, log, re.IGNORECASE):
+                    username = match.group(1)
+                    redactions.append({
+                        "type": "username",
+                        "original": username,
+                        "redacted": "[USER_REDACTED]"
+                    })
+                    log = log.replace(username, "[USER_REDACTED]")
+                
+                redacted_log = log
+
+            else:  # TASK_3
+                # Secret detection
+                import re
+                
+                log = observation.raw_log
+                redactions = []
+                patterns = [
+                    r"\bsk_[a-z0-9_]{20,}\b",
+                    r"\b[A-Z0-9]{20}\b",
+                    r"(?:secret|key|password|api_key|token)\s*=\s*(\S+)",
+                ]
+
+                for pattern in patterns:
+                    for match in re.finditer(pattern, log, re.IGNORECASE):
+                        token = match.group(1) if "(" in pattern else match.group(0)
+                        if len(token) > 5:
+                            redactions.append({
+                                "type": "token",
+                                "original": token[:10] + "...",
+                                "redacted": "[TOKEN_REDACTED]"
+                            })
+                            log = log.replace(token, "[TOKEN_REDACTED]")
+                
+                redacted_log = log
 
         # Create action and step
         action = RedactionAction(
@@ -166,59 +167,64 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
 
         rewards.append(reward.total_reward)
 
-    final_score = sum(rewards) / len(rewards) if rewards else 0.0
-    success = final_score >= 0.70
-    rows = []
-    for item in step_summaries:
-        rows.append(
-            "<tr>"
-            f"<td>{item['step']}</td>"
-            f"<td>{item['found']}</td>"
-            f"<td>{item['types']}</td>"
-            f"<td>{item['reward']:.2f}</td>"
-            f"<td>{item['f1']:.2f}</td>"
-            f"<td>{item['precision']:.2f}</td>"
-            f"<td>{item['recall']:.2f}</td>"
-            "</tr>"
+        final_score = sum(rewards) / len(rewards) if rewards else 0.0
+        success = final_score >= 0.70
+        
+        rows = []
+        for item in step_summaries:
+            rows.append(
+                "<tr>"
+                f"<td>{item['step']}</td>"
+                f"<td>{item['found']}</td>"
+                f"<td>{item['types']}</td>"
+                f"<td>{item['reward']:.2f}</td>"
+                f"<td>{item['f1']:.2f}</td>"
+                f"<td>{item['precision']:.2f}</td>"
+                f"<td>{item['recall']:.2f}</td>"
+                "</tr>"
+            )
+        output_html = f"""
+        <div style="padding:10px 12px;">
+          <h3 style="margin:0 0 8px 0; color:#ffffff;">Episode Results</h3>
+          <p style="margin:0 0 10px 0; color:#d8deea;">
+            <strong>Task:</strong> {observation.task.value} &nbsp;|&nbsp;
+            <strong>Expected:</strong> {", ".join(observation.pii_types_expected)}
+          </p>
+          <p style="margin:0 0 10px 0; color:#d8deea;"><strong>Raw Log:</strong> {observation.raw_log}</p>
+          <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:13px;">
+              <thead>
+                <tr style="background:#111827; color:#f5f7ff;">
+                  <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Step</th>
+                  <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Found</th>
+                  <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Types</th>
+                  <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Reward</th>
+                  <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">F1</th>
+                  <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Precision</th>
+                  <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Recall</th>
+                </tr>
+              </thead>
+              <tbody>
+                {"".join(rows)}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        """
+
+        # Create status message
+        status_msg = (
+            f"<h3 style='margin:0; color:{GREEN if success else RED};'>"
+            f"{'Success' if success else 'Needs Improvement'}</h3>"
+            f"<p style='margin:.4rem 0; color:#eef2ff;'>Final Score: <strong>{final_score:.2f}</strong>/1.00</p>"
+            f"<p style='margin:.2rem 0; color:#d8deea;'>Steps: {step_num}</p>"
         )
-    output_html = f"""
-    <div style="padding:10px 12px;">
-      <h3 style="margin:0 0 8px 0; color:#ffffff;">Episode Results</h3>
-      <p style="margin:0 0 10px 0; color:#d8deea;">
-        <strong>Task:</strong> {observation.task.value} &nbsp;|&nbsp;
-        <strong>Expected:</strong> {", ".join(observation.pii_types_expected)}
-      </p>
-      <p style="margin:0 0 10px 0; color:#d8deea;"><strong>Raw Log:</strong> {observation.raw_log}</p>
-      <div style="overflow-x:auto;">
-        <table style="width:100%; border-collapse:collapse; font-size:13px;">
-          <thead>
-            <tr style="background:#111827; color:#f5f7ff;">
-              <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Step</th>
-              <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Found</th>
-              <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Types</th>
-              <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Reward</th>
-              <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">F1</th>
-              <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Precision</th>
-              <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Recall</th>
-            </tr>
-          </thead>
-          <tbody>
-            {"".join(rows)}
-          </tbody>
-        </table>
-      </div>
-    </div>
-    """
 
-    # Create status message
-    status_msg = (
-        f"<h3 style='margin:0; color:{GREEN if success else RED};'>"
-        f"{'Success' if success else 'Needs Improvement'}</h3>"
-        f"<p style='margin:.4rem 0; color:#eef2ff;'>Final Score: <strong>{final_score:.2f}</strong>/1.00</p>"
-        f"<p style='margin:.2rem 0; color:#d8deea;'>Steps: {step_num}</p>"
-    )
+        return output_html, status_msg, final_score
 
-    return output_html, status_msg, final_score
+    except Exception as e:
+        error_msg = f"<h3 style='margin:0; color:{RED};'>Error</h3><p style='margin:.4rem 0; color:#eef2ff;'>{str(e)}</p>"
+        return format_output(f"Error: {str(e)}", RED), error_msg, 0.0
 
 
 def create_demo():
