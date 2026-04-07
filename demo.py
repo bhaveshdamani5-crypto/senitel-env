@@ -228,6 +228,7 @@ def create_demo():
       font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif !important;
       background: #0f1117 !important;
       color: #e6e8ee !important;
+      animation: appFade .35s ease-out;
     }
     .gradio-container .block,
     .gradio-container .panel,
@@ -236,6 +237,13 @@ def create_demo():
       border-radius: 12px !important;
       background: #161b22 !important;
       box-shadow: none !important;
+      transition: border-color .22s ease, transform .22s ease, box-shadow .22s ease;
+    }
+    .gradio-container .block:hover,
+    .gradio-container .panel:hover,
+    .gradio-container .form:hover {
+      border-color: rgba(255,255,255,0.20) !important;
+      box-shadow: 0 8px 22px rgba(0,0,0,0.20) !important;
     }
     .top-shell {
       border: 1px solid rgba(255,255,255,0.12);
@@ -243,6 +251,7 @@ def create_demo():
       padding: 16px 16px 10px;
       background: linear-gradient(180deg, #151b27 0%, #121720 100%);
       margin-bottom: 12px;
+      animation: riseIn .45s ease-out;
     }
     .gradio-container .prose,
     .gradio-container .prose p,
@@ -264,19 +273,26 @@ def create_demo():
       text-underline-offset: 2px;
     }
     .gradio-container button.primary {
-      background: #5E6AD2 !important;
+      background: linear-gradient(90deg, #5E6AD2, #6872D9) !important;
+      background-size: 140% 100% !important;
       color: #fff !important;
       border: none !important;
       border-radius: 10px !important;
       font-weight: 600 !important;
       min-height: 44px !important;
       letter-spacing: .01em !important;
+      transition: transform .18s ease, box-shadow .18s ease, background-position .25s ease !important;
     }
     .gradio-container button.primary:hover {
-      background: #6872D9 !important;
+      background-position: 100% 0 !important;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 20px rgba(94,106,210,0.28);
     }
     .gradio-container .block button.primary {
       box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset;
+    }
+    .gradio-container button.primary:active {
+      transform: translateY(0) scale(0.99);
     }
     .gradio-container input,
     .gradio-container textarea,
@@ -314,6 +330,9 @@ def create_demo():
     .gradio-container .prose table tbody tr:nth-child(even) td {
       background: #10161f !important;
     }
+    .gradio-container .prose table tbody tr:hover td {
+      background: #1a2330 !important;
+    }
     .hero-title {
       margin: 0;
       font-size: clamp(2rem, 3vw, 2.7rem);
@@ -321,6 +340,7 @@ def create_demo():
       letter-spacing: -0.02em;
       color: #ffffff;
       line-height: 1.15;
+      animation: riseIn .50s ease-out;
     }
     .hero-sub {
       margin-top: .45rem;
@@ -328,6 +348,7 @@ def create_demo():
       line-height: 1.6;
       max-width: 820px;
       font-size: .98rem;
+      animation: riseIn .60s ease-out;
     }
     .hero-badge-row {
       margin-top: 10px;
@@ -343,6 +364,12 @@ def create_demo():
       color: #d9e1ed;
       font-size: 12px;
       font-weight: 500;
+      transition: background .2s ease, border-color .2s ease, transform .2s ease;
+    }
+    .hero-badge:hover {
+      background: rgba(255,255,255,0.10);
+      border-color: rgba(255,255,255,0.20);
+      transform: translateY(-1px);
     }
     .gradio-container label[for^="component-"] {
       font-weight: 600 !important;
@@ -383,6 +410,14 @@ def create_demo():
     /* Hide default footer links for cleaner presentation */
     .gradio-container footer {
       display: none !important;
+    }
+    @keyframes appFade {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes riseIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
     }
     """
     theme = gr.themes.Soft(
