@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import gradio as gr
 import logging
+import os
 import subprocess
 from html import escape
 from env import LogSanitizerEnvironment
@@ -181,11 +182,40 @@ async def root():
         <article class="kpi"><b>Deployment Ready</b>Hugging Face Spaces + Docker-first architecture.</article>
       </div>
       <div class="actions">
-        <a class="btn ghost" href="/demo">Open Demo UI</a>
-        <a class="btn" href="/docs">Open Interactive Docs</a>
-        <a class="btn ghost" href="/redoc">Open Technical Reference</a>
-        <a class="btn ghost" href="/health">Health Endpoint</a>
-        <a class="btn ghost" href="/run-tests">Run Test Suite</a>
+        <button class="btn ghost" onclick="goTo('/demo')">🎮 Open Demo UI</button>
+        <button class="btn" onclick="goTo('/docs')">📘 Open Docs</button>
+        <button class="btn ghost" onclick="goTo('/redoc')">📚 Open Technical Reference</button>
+        <button class="btn ghost" onclick="runHealth()">💚 Health Check</button>
+        <button class="btn ghost" onclick="runTests()">🧪 Run Test Suite</button>
+      </div>
+      <div id="action-result" style="margin-top:12px; padding:10px; border:1px solid rgba(255,255,255,.14); border-radius:10px; background:rgba(0,0,0,.18); color:#dbe6ff; white-space:pre-wrap;">Ready.</div>
+      <script>
+        function goTo(path) {
+          window.location.href = path;
+        }
+        async function runHealth() {
+          const box = document.getElementById('action-result');
+          box.textContent = 'Running health check...';
+          try {
+            const res = await fetch('/health');
+            const data = await res.json();
+            box.textContent = 'Health: ' + JSON.stringify(data, null, 2);
+          } catch (e) {
+            box.textContent = 'Health check failed: ' + String(e);
+          }
+        }
+        async function runTests() {
+          const box = document.getElementById('action-result');
+          box.textContent = 'Running test suite... this may take up to 2-3 minutes.';
+          try {
+            const res = await fetch('/run-tests?format=json');
+            const data = await res.json();
+            box.textContent = 'Runner: ' + data.runner + '\\nStatus: ' + data.status + '\\nExit: ' + data.exit_code + '\\n\\n' + data.output;
+          } catch (e) {
+            box.textContent = 'Test suite failed to run: ' + String(e);
+          }
+        }
+      </script>
       </div>
     </section>
     <footer>Built for high-stakes log privacy and compliance reviews.</footer>
@@ -407,7 +437,7 @@ async def health_check():
 def _execute_tests() -> dict:
     """Run test suite with pytest first, then unittest fallback."""
     commands = [
-        ("pytest", ["python", "-m", "pytest", "-q", "tests"]),
+        ("pytest", ["python", "-m", "pytest", "-q", "tests", "--disable-warnings"]),
         ("unittest", ["python", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py", "-v"]),
     ]
     last_error = None
@@ -419,8 +449,11 @@ def _execute_tests() -> dict:
                 text=True,
                 timeout=180,
                 check=False,
+                env={**os.environ, "PYTHONWARNINGS": "ignore"},
             )
             output = (result.stdout or "") + ("\n" + result.stderr if result.stderr else "")
+            if len(output) > 20000:
+                output = output[:20000] + "\n... [truncated]"
             return {
                 "runner": runner,
                 "status": "passed" if result.returncode == 0 else "failed",
