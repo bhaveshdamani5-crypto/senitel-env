@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import gradio as gr
 import logging
+import subprocess
 from env import LogSanitizerEnvironment
 from models import RedactionAction, ResetResponse, StepResponse, EnvironmentState
 from demo import create_demo
@@ -183,6 +184,7 @@ async def root():
         <a class="btn" href="/docs">Open Interactive Docs</a>
         <a class="btn ghost" href="/redoc">Open Technical Reference</a>
         <a class="btn ghost" href="/health">Health Endpoint</a>
+        <a class="btn ghost" href="/run-tests">Run Test Suite</a>
       </div>
     </section>
     <footer>Built for high-stakes log privacy and compliance reviews.</footer>
@@ -400,6 +402,28 @@ async def health_check():
         "is_running": env.is_running,
         "cumulative_reward": env.cumulative_reward
     }
+
+@app.get("/run-tests")
+async def run_tests():
+    """Run the repository test suite and return summarized output."""
+    try:
+        result = subprocess.run(
+            ["python", "-m", "pytest", "-q", "tests"],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+        output = (result.stdout or "") + ("\n" + result.stderr if result.stderr else "")
+        return {
+            "status": "passed" if result.returncode == 0 else "failed",
+            "exit_code": result.returncode,
+            "output": output.strip(),
+        }
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="Test run timed out after 180 seconds")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unable to execute tests: {str(e)}")
 
 
 # Mount Gradio demo under /demo while keeping FastAPI docs at /docs
