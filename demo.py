@@ -183,23 +183,23 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
         )
     output_html = f"""
     <div style="padding:10px 12px;">
-      <h3 style="margin:0 0 8px 0; color:#f3f5f8;">Episode Results</h3>
-      <p style="margin:0 0 10px 0; color:#b8c0cc;">
+      <h3 style="margin:0 0 8px 0; color:#ffffff;">Episode Results</h3>
+      <p style="margin:0 0 10px 0; color:#d8deea;">
         <strong>Task:</strong> {observation.task.value} &nbsp;|&nbsp;
         <strong>Expected:</strong> {", ".join(observation.pii_types_expected)}
       </p>
-      <p style="margin:0 0 10px 0; color:#b8c0cc;"><strong>Raw Log:</strong> {observation.raw_log}</p>
+      <p style="margin:0 0 10px 0; color:#d8deea;"><strong>Raw Log:</strong> {observation.raw_log}</p>
       <div style="overflow-x:auto;">
         <table style="width:100%; border-collapse:collapse; font-size:13px;">
           <thead>
-            <tr style="background:#0f141c; color:#dfe4ef;">
-              <th style="padding:8px; border:1px solid rgba(255,255,255,0.10);">Step</th>
-              <th style="padding:8px; border:1px solid rgba(255,255,255,0.10);">Found</th>
-              <th style="padding:8px; border:1px solid rgba(255,255,255,0.10);">Types</th>
-              <th style="padding:8px; border:1px solid rgba(255,255,255,0.10);">Reward</th>
-              <th style="padding:8px; border:1px solid rgba(255,255,255,0.10);">F1</th>
-              <th style="padding:8px; border:1px solid rgba(255,255,255,0.10);">Precision</th>
-              <th style="padding:8px; border:1px solid rgba(255,255,255,0.10);">Recall</th>
+            <tr style="background:#111827; color:#f5f7ff;">
+              <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Step</th>
+              <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Found</th>
+              <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Types</th>
+              <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Reward</th>
+              <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">F1</th>
+              <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Precision</th>
+              <th style="padding:8px; border:1px solid rgba(255,255,255,0.16);">Recall</th>
             </tr>
           </thead>
           <tbody>
@@ -214,8 +214,8 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
     status_msg = (
         f"<h3 style='margin:0; color:{GREEN if success else RED};'>"
         f"{'Success' if success else 'Needs Improvement'}</h3>"
-        f"<p style='margin:.4rem 0;'>Final Score: <strong>{final_score:.2f}</strong>/1.00</p>"
-        f"<p style='margin:.2rem 0;'>Steps: {step_num}</p>"
+        f"<p style='margin:.4rem 0; color:#eef2ff;'>Final Score: <strong>{final_score:.2f}</strong>/1.00</p>"
+        f"<p style='margin:.2rem 0; color:#d8deea;'>Steps: {step_num}</p>"
     )
 
     return output_html, status_msg, final_score
@@ -240,12 +240,12 @@ def create_demo():
     .gradio-container .prose,
     .gradio-container .prose p,
     .gradio-container label {
-      color: #b8c0cc !important;
+      color: #d0d7e2 !important;
     }
     .gradio-container .prose h1,
     .gradio-container .prose h2,
     .gradio-container .prose h3 {
-      color: #f3f5f8 !important;
+      color: #ffffff !important;
     }
     .gradio-container button.primary {
       background: #5E6AD2 !important;
@@ -261,9 +261,27 @@ def create_demo():
     .gradio-container textarea,
     .gradio-container select {
       background: #0f141c !important;
-      color: #e6e8ee !important;
+      color: #f2f6ff !important;
       border: 1px solid rgba(255,255,255,0.12) !important;
       border-radius: 10px !important;
+    }
+    .gradio-container .prose table,
+    .gradio-container .prose th,
+    .gradio-container .prose td {
+      color: #f2f6ff !important;
+      border-color: rgba(255,255,255,0.16) !important;
+    }
+    .gradio-container .prose th {
+      background: #111827 !important;
+      font-weight: 700 !important;
+    }
+    .gradio-container .prose td {
+      background: #161b22 !important;
+    }
+    .gradio-container input[type="number"] {
+      color: #ffffff !important;
+      font-weight: 700 !important;
+      opacity: 1 !important;
     }
     .hero-title {
       margin: 0;
