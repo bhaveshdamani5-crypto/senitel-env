@@ -315,6 +315,26 @@ def create_demo():
         0 0 40px rgba(0,0,0,0.2);
       transition: border-color .24s cubic-bezier(.16,1,.3,1), transform .24s cubic-bezier(.16,1,.3,1), box-shadow .24s cubic-bezier(.16,1,.3,1);
     }
+    .spotlight-card {
+      position: relative;
+      overflow: hidden;
+    }
+    .spotlight-card::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      pointer-events: none;
+      opacity: 0;
+      background: radial-gradient(
+        300px circle at var(--spot-x, 50%) var(--spot-y, 50%),
+        rgba(94,106,210,0.15),
+        rgba(94,106,210,0.0) 60%
+      );
+      transition: opacity .24s cubic-bezier(.16,1,.3,1);
+    }
+    .spotlight-card:hover::before {
+      opacity: 1;
+    }
 
     .gradio-container .block:hover,
     .gradio-container .panel:hover {
@@ -380,6 +400,9 @@ def create_demo():
 
     .hero {
       padding: 1.2rem 0.2rem 0.8rem;
+      transform: translateY(var(--hero-y, 0px)) scale(var(--hero-scale, 1));
+      opacity: var(--hero-opacity, 1);
+      transition: transform .1s linear, opacity .1s linear;
     }
     .hero-kicker {
       font-size: .72rem;
@@ -454,6 +477,11 @@ def create_demo():
       letter-spacing: .03em;
       text-transform: uppercase;
     }
+    .section-divider {
+      height: 1px;
+      margin: 1rem 0 1.2rem;
+      background: linear-gradient(to right, transparent, rgba(255,255,255,0.12), transparent);
+    }
 
     @keyframes shimmer {
       0% { background-position: 0% 50%; }
@@ -517,6 +545,8 @@ def create_demo():
             """
         )
 
+        gr.HTML('<div class="section-divider"></div>')
+
         # Controls
         with gr.Row():
             with gr.Column(scale=1):
@@ -528,11 +558,13 @@ def create_demo():
                     ],
                     value="Task 1: Email & IPv4 Detection (Easy)",
                     label="📋 Select Task",
+                    elem_classes=["spotlight-card"],
                 )
                 run_button = gr.Button(
                     "▶ Run Demo",
                     variant="primary",
                     size="lg",
+                    elem_classes=["spotlight-card"],
                 )
 
         # Output area
@@ -543,6 +575,7 @@ def create_demo():
                         "Click 'Run Demo' to start...",
                         BLUE,
                     ),
+                    elem_classes=["spotlight-card"],
                 )
 
         # Status and score
@@ -550,12 +583,14 @@ def create_demo():
             with gr.Column():
                 status_display = gr.HTML(
                     value="<p>Ready to run...</p>",
+                    elem_classes=["spotlight-card"],
                 )
             with gr.Column():
                 score_display = gr.Number(
                     label="📈 Episode Score",
                     value=0.0,
                     interactive=False,
+                    elem_classes=["spotlight-card"],
                 )
 
         gr.Markdown(
@@ -570,6 +605,40 @@ def create_demo():
               - **<0.50**: substantial misses
 
             Repository: https://github.com/bhaveshdamani5-crypto/senitel-env
+            """
+            ,
+            elem_classes=["spotlight-card"]
+        )
+
+        gr.HTML(
+            """
+            <script>
+              (() => {
+                const applySpotlight = () => {
+                  document.querySelectorAll('.spotlight-card').forEach((el) => {
+                    if (el.dataset.spotlightBound === '1') return;
+                    el.dataset.spotlightBound = '1';
+                    el.addEventListener('mousemove', (e) => {
+                      const rect = el.getBoundingClientRect();
+                      el.style.setProperty('--spot-x', `${e.clientX - rect.left}px`);
+                      el.style.setProperty('--spot-y', `${e.clientY - rect.top}px`);
+                    });
+                  });
+                };
+                const applyParallax = () => {
+                  const hero = document.querySelector('.hero');
+                  if (!hero) return;
+                  const progress = Math.min(window.scrollY / 500, 1);
+                  hero.style.setProperty('--hero-opacity', String(1 - (progress * 0.35)));
+                  hero.style.setProperty('--hero-scale', String(1 - (progress * 0.05)));
+                  hero.style.setProperty('--hero-y', `${progress * 44}px`);
+                };
+                applySpotlight();
+                applyParallax();
+                document.addEventListener('scroll', applyParallax, { passive: true });
+                setInterval(applySpotlight, 1200);
+              })();
+            </script>
             """
         )
 
