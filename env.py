@@ -11,6 +11,7 @@ from models import (
     Observation, RedactionAction, Reward, TaskEnum,
     StepResponse, ResetResponse, EnvironmentState
 )
+from grader import RedactionGrader
 
 
 class LogSanitizerEnvironment:
@@ -169,110 +170,14 @@ class LogSanitizerEnvironment:
     
     def _evaluate_redaction(self, action: RedactionAction) -> Dict:
         """
-        Evaluate redaction quality with reward shaping.
+        Evaluate redaction quality using RedactionGrader.
         
-        Rewards:
-        - +0.2 for partial progress
-        - +1.0 for full correct redaction
-        - -1.0 for missing high-risk secret
-        - -0.3 for over-redacting useful data
+        Uses F1-score with reward shaping:
+        - +1.0 (perfect): F1 = 1.0
+        - +0.8 (excellent): Recall ≥0.9, Precision ≥0.8
+        - +0.5 (good): F1 ≥ 0.6
+        - +0.2 (partial): Otherwise
+        - -1.0 (critical): Missed secrets in Task 3
+        - -0.3 (penalty): Over-redacting >20% non-PII
         """
-        penalties = {}
-        metrics = {
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1_score": 0.0,
-            "over_redaction_ratio": 0.0
-        }
-        feedback = ""
-        
-        # Extract ground truth PII based on task
-        ground_truth = self._extract_ground_truth(self.current_task)
-        
-        # Extract detected PII from action
-        detected_pii = {r["original"] for r in action.redactions}
-        
-        # Calculate metrics
-        if ground_truth:
-            true_positives = len(detected_pii & ground_truth)
-            false_positives = len(detected_pii - ground_truth)
-            false_negatives = len(ground_truth - detected_pii)
-            
-            precision = true_positives / len(detected_pii) if detected_pii else 0.0
-            recall = true_positives / len(ground_truth) if ground_truth else 0.0
-            f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
-            
-            metrics["precision"] = precision
-            metrics["recall"] = recall
-            metrics["f1_score"] = f1_score
-            metrics["over_redaction_ratio"] = false_positives / len(detected_pii) if detected_pii else 0.0
-            
-            # Reward shaping
-            if f1_score == 1.0:
-                base_reward = 1.0
-                feedback = "Perfect redaction! All PII detected and redacted correctly."
-            elif recall >= 0.9 and precision >= 0.8:
-                base_reward = 0.8
-                feedback = "Excellent redaction. Minor improvement possible."
-            elif f1_score >= 0.6:
-                base_reward = 0.5
-                feedback = "Good effort. Consider improving detection."
-            else:
-                base_reward = 0.2
-                feedback = "Partial progress. Review detection logic."
-            
-            # Penalties
-            if false_negatives > 0 and self.current_task == TaskEnum.TASK_3:
-                penalties["missed_secrets"] = -1.0
-                feedback += " WARNING: High-risk secret not redacted!"
-            
-            if metrics["over_redaction_ratio"] > 0.2:
-                penalties["over_redacting"] = -0.3
-                feedback += " Caution: Over-redacting useful data."
-        else:
-            base_reward = 0.2 if len(action.redactions) > 0 else 0.0
-            feedback = "Unable to evaluate. Check task setup."
-        
-        total_reward = base_reward + sum(penalties.values())
-        
-        return {
-            "base_reward": base_reward,
-            "penalties": penalties,
-            "total_reward": total_reward,
-            "metrics": metrics,
-            "feedback": feedback
-        }
-    
-    def _extract_ground_truth(self, task: TaskEnum) -> set:
-        """Extract ground truth PII from current log."""
-        pii_set = set()
-        
-        if task == TaskEnum.TASK_1:
-            # Email regex
-            emails = re.findall(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', self.current_log)
-            pii_set.update(emails)
-            
-            # IPv4 regex
-            ipv4s = re.findall(r'\b(?:\d{1,3}\.){3}\d{1,3}\b', self.current_log)
-            pii_set.update(ipv4s)
-        
-        elif task == TaskEnum.TASK_2:
-            # Username in quotes: User 'Name'
-            usernames = re.findall(r"User\s+'([A-Za-z]+)'", self.current_log)
-            pii_set.update(usernames)
-        
-        elif task == TaskEnum.TASK_3:
-            # High-entropy tokens/secrets
-            # sk_live_* pattern
-            tokens = re.findall(r'\bsk_[a-z0-9_]{20,}\b', self.current_log, re.IGNORECASE)
-            pii_set.update(tokens)
-            
-            # AWS-like keys
-            aws_keys = re.findall(r'\b[A-Z0-9]{20}\b', self.current_log)
-            pii_set.update(aws_keys)
-            
-            # Secret assignments
-            secrets = re.findall(r'(?:secret|key|password|api_key|token)\s*=\s*(\S+)', self.current_log, re.IGNORECASE)
-            pii_set.update(secrets)
-        
-        return pii_set
+        return RedactionGrader.grade(action.redactions, self.current_log, self.current_task)
