@@ -245,32 +245,92 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
 
 def create_demo():
     """Create Gradio interface."""
-
-    with gr.Blocks(title="Sentinel-Log-Shield: OpenEnv Demo") as demo:
+    premium_css = """
+    :root {
+      --bg-0: #070910;
+      --bg-1: #121936;
+      --glass: rgba(255, 255, 255, 0.08);
+      --glass-border: rgba(255, 255, 255, 0.2);
+      --text: #eef3ff;
+      --muted: #b8c3e0;
+      --accent: #8aa1ff;
+      --accent2: #65e5cf;
+    }
+    .gradio-container {
+      background:
+        radial-gradient(circle at 15% 20%, #3b4a99 0%, transparent 30%),
+        radial-gradient(circle at 88% 24%, #1b7f86 0%, transparent 24%),
+        linear-gradient(135deg, var(--bg-0), var(--bg-1)) !important;
+      color: var(--text) !important;
+      font-family: Inter, Segoe UI, system-ui, sans-serif !important;
+    }
+    .gradio-container .block, .gradio-container .panel {
+      border: 1px solid var(--glass-border) !important;
+      background: var(--glass) !important;
+      backdrop-filter: blur(14px);
+      border-radius: 18px !important;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+      animation: rise .5s ease both;
+    }
+    .gradio-container button.primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2)) !important;
+      color: #081024 !important;
+      border: 0 !important;
+      font-weight: 700 !important;
+      border-radius: 12px !important;
+      transition: transform .2s ease, box-shadow .2s ease;
+    }
+    .gradio-container button.primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 26px rgba(101, 229, 207, 0.32);
+    }
+    .hero-title {
+      font-size: clamp(1.8rem, 4vw, 2.7rem);
+      margin: 0 0 .55rem;
+      letter-spacing: -0.02em;
+      animation: rise .55s ease both;
+    }
+    .hero-sub {
+      color: var(--muted);
+      margin: 0 0 1rem;
+      line-height: 1.6;
+      animation: rise .7s ease both;
+    }
+    .pill {
+      display: inline-block;
+      font-size: .8rem;
+      padding: .35rem .75rem;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, .3);
+      background: rgba(255, 255, 255, .08);
+      margin-right: .45rem;
+      margin-bottom: .45rem;
+    }
+    @keyframes rise { from { opacity: 0; transform: translateY(10px);} to {opacity: 1; transform: none;} }
+    """
+    with gr.Blocks(
+        title="Sentinel-Log-Shield: OpenEnv Demo",
+        css=premium_css,
+        theme=gr.themes.Soft(
+            primary_hue="indigo",
+            secondary_hue="cyan",
+            neutral_hue="slate",
+        ),
+    ) as demo:
 
         # Header
-        gr.Markdown(
+        gr.HTML(
             """
-# 🔐 Sentinel-Log-Shield: Enterprise PII Redaction
-
-**OpenEnv Framework Implementation for Intelligent Log Sanitization**
-
----
-
-## 🎯 What is this?
-
-An AI agent that automatically detects and redacts sensitive information (PII) from system logs:
-- **Task 1 (Easy)**: Email addresses & IPv4 addresses  
-- **Task 2 (Medium)**: Usernames in conversational logs
-- **Task 3 (Hard)**: API keys, tokens, and secrets in stack traces
-
-The agent learns to preserve log utility while removing sensitive data.
-
----
-
-## 🚀 Quick Demo
-
-Select a task and watch the agent work in real-time:
+<div style="padding: 0.2rem 0.2rem 0.7rem;">
+  <h1 class="hero-title">Sentinel-Log-Shield</h1>
+  <p class="hero-sub">
+    Enterprise-style log privacy sandbox with intelligent redaction scoring.
+    Run episodes across progressive tasks and inspect precision/recall/F1 output in real time.
+  </p>
+  <span class="pill">OpenEnv Compliant</span>
+  <span class="pill">Risk-Aware Redaction</span>
+  <span class="pill">Judge-Friendly Output</span>
+</div>
 """
         )
 
@@ -364,7 +424,7 @@ Traceback: sk_live_1234567890abcdef in auth.py line 42
 ## 🎓 More Information
 
 - **GitHub Repository**: https://github.com/bhaveshdamani5-crypto/senitel-env
-- **README**: Complete documentation with architecture diagrams
+- **README**: Professional docs + architecture flowcharts
 - **OpenEnv Framework**: https://github.com/openai/openenv
 
 """
