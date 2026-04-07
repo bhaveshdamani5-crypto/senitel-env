@@ -511,14 +511,14 @@ def create_demo():
       }
     }
     """
+    theme = gr.themes.Soft(
+        primary_hue="indigo",
+        secondary_hue="cyan",
+        neutral_hue="slate",
+    )
+
     with gr.Blocks(
         title="Sentinel-Log-Shield: OpenEnv Demo",
-        css=premium_css,
-        theme=gr.themes.Soft(
-            primary_hue="indigo",
-            secondary_hue="cyan",
-            neutral_hue="slate",
-        ),
     ) as demo:
 
         gr.HTML(
@@ -656,14 +656,16 @@ def create_demo():
             outputs=[output_display, status_display, score_display],
         )
 
-    return demo
+    return demo, premium_css, theme
 
 
 if __name__ == "__main__":
-    demo = create_demo()
+    demo, premium_css, theme = create_demo()
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860,
         show_error=True,
         share=False,
+        css=premium_css,
+        theme=theme,
     )
