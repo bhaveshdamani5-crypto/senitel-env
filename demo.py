@@ -11,6 +11,7 @@ Provides a web interface for Hugging Face Spaces with:
 import gradio as gr
 import sys
 import os
+import subprocess
 from env import LogSanitizerEnvironment, TaskEnum
 from models import RedactionAction
 
@@ -245,6 +246,13 @@ def run_demo_episode(task_choice: str) -> tuple[str, str, float]:
 
 def create_demo():
     """Create Gradio interface."""
+    try:
+        build_sha = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            text=True,
+        ).strip()
+    except Exception:
+        build_sha = "unknown"
     premium_css = """
     :root {
       --background-deep: #020203;
@@ -536,6 +544,7 @@ def create_demo():
               <span class="pill">Risk-aware</span>
               <span class="pill">Motion-tuned UI</span>
               <span class="pill">Judge-ready demo</span>
+              <span class="pill">Build: __BUILD_SHA__</span>
               <div class="mini-metrics">
                 <div class="metric-card"><b>3 Tasks</b><span>Progressive benchmark</span></div>
                 <div class="metric-card"><b>F1 Scored</b><span>Precision + recall tracked</span></div>
@@ -543,6 +552,7 @@ def create_demo():
               </div>
             </div>
             """
+            .replace("__BUILD_SHA__", build_sha)
         )
 
         gr.HTML('<div class="section-divider"></div>')
