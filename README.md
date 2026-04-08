@@ -357,6 +357,7 @@ Access API at: `https://<username>-<space-name>.hf.space/api`
 Before submitting, verify:
 
 ### Code & Setup
+
 - [x] `inference.py` in project root ✅
 - [x] All dependencies in `requirements.txt` ✅
 - [x] `env.py` and `grader.py` updated with epsilon bounds ✅
@@ -365,6 +366,7 @@ Before submitting, verify:
 - [x] Uses official `from openai import OpenAI` (no Anthropic/LangChain) ✅
 
 ### Output Format
+
 - [x] `[START]` printed once at beginning ✅
 - [x] `[STEP]` per action: `step=N action=X reward=Y.YY done=true/false error=null` ✅
 - [x] `[END]` always printed: `success=true/false steps=N rewards=R1,R2,...` ✅
@@ -373,6 +375,7 @@ Before submitting, verify:
 - [x] Exception handling ensures `[END]` prints even on crash ✅
 
 ### Task Quality
+
 - [x] Task is meaningful (security investigation, not toy problem) ✅
 - [x] True RL: state transitions, hidden info, budget constraints ✅
 - [x] Procedural generation: each episode differs ✅
@@ -380,12 +383,14 @@ Before submitting, verify:
 - [x] Score bounds: epsilon-clamped (0.0001 to 0.9999, not 0.0-1.0) ✅
 
 ### Testing
+
 - [x] All 4 pytest tests pass ✅
 - [x] Demo script (`demo.py`) runs successfully ✅
 - [x] Inference baseline works without HF Space ✅
 - [x] Output format validated against spec ✅
 
 ### Deployment
+
 - [x] GitHub repo is public ✅
 - [x] README has links to GitHub and HF Space ✅
 - [x] Dockerfile works (Space can build) ✅
@@ -393,6 +398,7 @@ Before submitting, verify:
 - [x] No extra spaces/resources wasting quota ✅
 
 ### Final Pre-Submit
+
 ```bash
 # Run these before submitting:
 python -m pytest tests/ -v                    # ✅ Should pass 4/4
@@ -429,7 +435,7 @@ tests/test_smoke.py::test_grading_consistency PASSED
 **What's tested:**
 
 - Environment initialization with all difficulty levels ✅
-- Reset flow produces valid observations ✅  
+- Reset flow produces valid observations ✅
 - All 4 action types (SCAN, INVESTIGATE, REDACT, SUBMIT) execute correctly ✅
 - Grading is deterministic (same seed = same score) ✅
 - PII discovery works across all types (email, IP, username, token, phone) ✅
