@@ -124,14 +124,18 @@ def _classify_entity(entity: str) -> str:
         return "ip"
     low = entity.lower()
     if (
-        low.startswith("sk_")
+        low.startswith("sk_live_")
+        or low.startswith("sk_test_")
         or low.startswith("ghp_")
         or low.startswith("hf_")
         or low.startswith("akia")
-        or low.startswith("eyj")
+        or low.startswith("asia")
+        or low.startswith("eyJ") # case-sensitive check often needed, but startswith matches prefix
         or low.startswith("api_key_")
+        or low.startswith("xoxp-")
+        or low.startswith("xoxb-")
         or low.startswith("bearer ")
-        or len(entity) > 15
+        or len(entity) > 24 # Increased threshold for entropy-based tokens
     ):
         return "token"
     return "username"

@@ -31,7 +31,7 @@ from models import (
 # ============================================================================
 
 # Scores must be strictly between 0 and 1, not exactly 0.0 or 1.0
-EPSILON = 1e-6
+EPSILON = 0.001
 MIN_SCORE = EPSILON
 MAX_SCORE = 1.0 - EPSILON
 
