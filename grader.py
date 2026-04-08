@@ -91,21 +91,21 @@ class InvestigationGrader:
         # Letter grade
         grade = InvestigationGrader._letter_grade(total_score)
 
-        # Helper to round and re-clamp (rounding can push values back to boundaries)
-        def safe_round(val: float, decimals: int = 2) -> float:
-            rounded = round(max(MIN_SCORE, min(MAX_SCORE, val)), decimals)
-            return max(MIN_SCORE, min(MAX_SCORE, rounded))
+        # Helper to strictly bound values (never return 0.0 or 1.0)
+        def strictly_bound(val: float) -> float:
+            # Clip to EPSILON bounds without any rounding
+            return max(EPSILON, min(1.0 - EPSILON, val))
 
         return {
-            # Core metrics - clamp to valid range
-            "precision": safe_round(precision, 2),
-            "recall": safe_round(recall, 2),
-            "f1_score": safe_round(f1, 2),
+            # Core metrics - strictly bounded (no rounding, no 0.0 or 1.0)
+            "precision": strictly_bound(precision),
+            "recall": strictly_bound(recall),
+            "f1_score": strictly_bound(f1),
             # Discovery
-            "discovery_rate": safe_round(discovery_rate, 2),
+            "discovery_rate": strictly_bound(discovery_rate),
             "discovered_count": discovered_correct,
             # Efficiency
-            "efficiency": safe_round(efficiency, 2),
+            "efficiency": strictly_bound(efficiency),
             "steps_used": steps_used,
             "steps_budget": steps_budget,
             "steps_saved": steps_saved,
@@ -118,14 +118,14 @@ class InvestigationGrader:
             "false_positives": false_positives,
             "false_negatives": false_negatives,
             "total_pii": total,
-            # Score components
-            "f1_component": safe_round(f1_component, 2),
-            "discovery_component": safe_round(discovery_component, 2),
-            "recall_component": safe_round(recall_component, 2),
-            "efficiency_bonus": safe_round(efficiency_bonus, 2),
-            "secret_penalty": safe_round(secret_penalty, 2),
+            # Score components - also strictly bounded
+            "f1_component": strictly_bound(f1_component),
+            "discovery_component": strictly_bound(discovery_component),
+            "recall_component": strictly_bound(recall_component),
+            "efficiency_bonus": strictly_bound(efficiency_bonus),
+            "secret_penalty": strictly_bound(secret_penalty),
             # Final
-            "total_score": safe_round(total_score, 2),
+            "total_score": strictly_bound(total_score),
             "grade": grade,
         }
 
