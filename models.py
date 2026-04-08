@@ -10,8 +10,8 @@ from typing import List, Dict, Optional, Any
 from enum import Enum
 
 # Scores must be strictly between 0 and 1 (not 0.0 or 1.0)
-# Updated to 0.01 to provide more margin from boundaries
-_EPSILON = 0.01
+# Using 0.05 for sufficient margin from boundaries
+_EPSILON = 0.05
 _MAX_SCORE = 1.0 - _EPSILON
 
 

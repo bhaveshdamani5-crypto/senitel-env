@@ -31,8 +31,8 @@ from models import (
 # ============================================================================
 
 # Scores must be strictly between 0 and 1, not exactly 0.0 or 1.0
-# Updated to 0.01 to provide more margin from boundaries
-EPSILON = 0.01
+# Using 0.05 for sufficient margin from boundaries
+EPSILON = 0.05
 MIN_SCORE = EPSILON
 MAX_SCORE = 1.0 - EPSILON
 

@@ -17,8 +17,8 @@ Scoring components:
 from typing import Dict, Set, List, Tuple, Any
 
 # Epsilon bounds: scores must be strictly between 0 and 1 (not exactly 0.0 or 1.0)
-# Using 0.01 as the boundary to ensure strict bounds
-EPSILON = 0.01
+# Using 0.05 as the boundary to ensure strict bounds with safety margin
+EPSILON = 0.05
 MIN_SCORE = EPSILON
 MAX_SCORE = 1.0 - EPSILON
 
@@ -52,6 +52,7 @@ class InvestigationGrader:
         total = len(ground_truth)
         if total == 0:
             # For empty scenarios, return bounded scores
+            # All metrics should be properly bounded between MIN_SCORE and MAX_SCORE
             return {
                 "precision": MAX_SCORE,
                 "recall": MAX_SCORE,
@@ -71,10 +72,10 @@ class InvestigationGrader:
                 "false_positives": 0,
                 "false_negatives": 0,
                 "total_pii": 0,
-                "f1_component": 0.7 * MAX_SCORE,
-                "discovery_component": 0.2 * MAX_SCORE,
-                "recall_component": 0.1 * MAX_SCORE,
-                "efficiency_bonus": 0.05 * MAX_SCORE,
+                "f1_component": max(MIN_SCORE, min(MAX_SCORE, 0.7 * MAX_SCORE)),
+                "discovery_component": max(MIN_SCORE, min(MAX_SCORE, 0.2 * MAX_SCORE)),
+                "recall_component": max(MIN_SCORE, min(MAX_SCORE, 0.1 * MAX_SCORE)),
+                "efficiency_bonus": max(MIN_SCORE, min(MAX_SCORE, 0.05 * MAX_SCORE)),
             }
 
         # Core metrics with proper bounds checking
