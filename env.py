@@ -680,7 +680,7 @@ class SentinelEnvironment:
             raise ValueError("Episode not running. Call reset() first.")
 
         self.steps_used += 1
-        reward = Reward(total_reward=0.0)
+        reward = Reward(total_reward=MIN_SCORE)
         hint = ""
         terminated = False
         truncated = False
@@ -696,8 +696,8 @@ class SentinelEnvironment:
             terminated = True
         else:
             reward = Reward(
-                total_reward=-0.1,
-                penalty=-0.1,
+                total_reward=MIN_SCORE,
+                penalty=MIN_SCORE,
                 feedback="Invalid action type.",
             )
 
@@ -797,15 +797,15 @@ class SentinelEnvironment:
         """Investigate an entity to reveal connected logs."""
         if not target:
             return Reward(
-                total_reward=-0.1,
-                penalty=-0.1,
+                total_reward=MIN_SCORE,
+                penalty=MIN_SCORE,
                 feedback="INVESTIGATE requires a target_entity.",
             ), "Please provide a target_entity to investigate."
 
         if target in self.investigated_entities:
             return Reward(
-                total_reward=-0.05,
-                penalty=-0.05,
+                total_reward=MIN_SCORE,
+                penalty=MIN_SCORE,
                 feedback=f"Already investigated '{target}'. Try a different entity.",
             ), f"'{target}' was already investigated. Choose another entity."
 
@@ -814,8 +814,8 @@ class SentinelEnvironment:
         # Honeypot trap: investigating certain decoys penalizes the agent
         if self.scenario and target in getattr(self.scenario, "honeypots", set()):
             return Reward(
-                total_reward=-0.2,
-                penalty=-0.2,
+                total_reward=MIN_SCORE,
+                penalty=MIN_SCORE,
                 feedback=f"⚠️ Honeypot triggered: '{target}' was a canary decoy. Penalty applied.",
                 metrics={"honeypot_triggered": 1},
             ), "Honeypot triggered. Avoid investigating obvious decoys."
@@ -865,8 +865,8 @@ class SentinelEnvironment:
         # If nothing new is revealed, treat as a dead-end (wasted step)
         if newly_visible == 0 and len(newly_discovered) == 0:
             return Reward(
-                total_reward=-0.1,
-                penalty=-0.1,
+                total_reward=MIN_SCORE,
+                penalty=MIN_SCORE,
                 feedback=f"Dead-end investigation: '{target}' revealed nothing useful.",
                 metrics={"deadend": 1},
             ), f"'{target}' was a dead-end. Prioritize other entities."
@@ -886,8 +886,8 @@ class SentinelEnvironment:
         """Submit PII items for redaction and scoring."""
         if not redactions:
             return Reward(
-                total_reward=-0.05,
-                penalty=-0.05,
+                total_reward=MIN_SCORE,
+                penalty=MIN_SCORE,
                 feedback="No redactions provided.",
             ), "Please provide redactions: [{'original': '...', 'type': 'email|ip|username|token'}]"
 
@@ -978,12 +978,12 @@ class SentinelEnvironment:
         missed_secrets = secret_tokens - self.redacted_pii
         secret_penalty = -0.3 * min(len(missed_secrets), 3)  # Max penalty -0.9 for 3+ missed secrets
 
-        # Final score composition (normalized to [-1.0, +1.0])
+        # Final score composition (normalized to epsilon bounds: 0.0001 - 0.9999)
         base_score = f1 * 0.7  # F1 is 70% of score
         discovery_component = discovery_rate * 0.2  # Discovery is 20%
         completeness = recall * 0.1  # Raw recall is 10%
 
-        total_reward = max(-1.0, min(1.0, base_score + discovery_component + completeness + efficiency_bonus + secret_penalty))
+        total_reward = max(MIN_SCORE, min(MAX_SCORE, base_score + discovery_component + completeness + efficiency_bonus + secret_penalty))
 
         hint = f"📊 Final Score: {total_reward:.3f} | F1: {f1:.3f} | Discovery: {discovery_rate:.0%} | "
         hint += f"Redacted: {true_positives}/{total_pii}"
