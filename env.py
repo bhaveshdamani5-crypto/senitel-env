@@ -49,11 +49,11 @@ def safe_unit(x: float) -> float:
 
 
 def safe_score(x: float) -> float:
-    """Clamp to [0.0, 1.0], allowing exact boundaries.
+    """Clamp to strictly (EPSILON, 1-EPSILON), never exactly 0.0 or 1.0.
     Use for normal probabilities, proportions, rates."""
     if x is None:
-        return 0.0
-    return max(0.0, min(1.0, float(x)))
+        return EPSILON
+    return max(EPSILON, min(1.0 - EPSILON, float(x)))
 
 
 def safe_nonnegative(x: float) -> float:
@@ -1009,18 +1009,18 @@ class SentinelEnvironment:
         false_positives = len(self.redacted_pii - ground_truth)
         false_negatives = len(ground_truth - self.redacted_pii)
 
-        precision = safe_score(true_positives / (true_positives + false_positives)) if (true_positives + false_positives) > 0 else EPSILON
-        recall = safe_score(true_positives / total_pii) if total_pii > 0 else EPSILON
-        f1 = safe_score((2 * precision * recall) / (precision + recall)) if (precision + recall) > 0 else EPSILON
+        precision = safe_unit(true_positives / (true_positives + false_positives)) if (true_positives + false_positives) > 0 else EPSILON
+        recall = safe_unit(true_positives / total_pii) if total_pii > 0 else EPSILON
+        f1 = safe_unit((2 * precision * recall) / (precision + recall)) if (precision + recall) > 0 else EPSILON
 
         # Discovery rate: what fraction of PII was even discovered (seen in scan/investigate)
         discovered_pii = self.discovered_entities & ground_truth
-        discovery_rate = safe_score(len(discovered_pii) / total_pii) if total_pii > 0 else EPSILON
+        discovery_rate = safe_unit(len(discovered_pii) / total_pii) if total_pii > 0 else EPSILON
 
         # Efficiency bonus: steps saved
         budget = self.scenario.budget
         steps_saved = max(0, budget - self.steps_used)
-        efficiency_bonus = safe_unit(0.05 * steps_saved) if steps_saved > 0 else EPSILON
+        efficiency_bonus = safe_unit(max(EPSILON, 0.05 * steps_saved)) if steps_saved > 0 else EPSILON
 
         # Secret penalty: critical secrets missed (capped to prevent unbounded penalties)
         secret_tokens = self.scenario.all_pii.get("token", set())

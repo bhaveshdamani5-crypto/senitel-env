@@ -5,9 +5,13 @@ Defines the action space, observation space, reward structure, and state trackin
 for a genuine multi-step RL investigation environment.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Dict, Optional, Any
 from enum import Enum
+
+# Scores must be strictly between 0 and 1 (not 0.0 or 1.0)
+_EPSILON = 0.0001
+_MAX_SCORE = 1.0 - _EPSILON
 
 
 # ============================================================================
@@ -161,23 +165,27 @@ class Observation(BaseModel):
 class Reward(BaseModel):
     """Reward signal with multiple components for rich feedback."""
     redaction_score: float = Field(
-        default=0.0,
+        default=_EPSILON,
         description="Score for correctly redacted items this step"
     )
     discovery_bonus: float = Field(
-        default=0.0,
+        default=_EPSILON,
         description="Bonus for discovering hidden/deep-layer PII"
     )
     efficiency_bonus: float = Field(
-        default=0.0,
+        default=_EPSILON,
         description="Bonus for completing with steps remaining"
     )
     penalty: float = Field(
-        default=0.0,
+        default=_EPSILON,
         description="Penalty for false positives or missed critical secrets"
     )
     total_reward: float = Field(
         ..., description="Sum of all reward components"
+    )
+    score: float = Field(
+        default=_EPSILON,
+        description="Task score strictly in (0, 1) — required by OpenEnv validator. Mirrors total_reward, clamped to (EPSILON, 1-EPSILON)."
     )
     metrics: Dict[str, Any] = Field(
         default_factory=dict,
@@ -187,16 +195,41 @@ class Reward(BaseModel):
         default="", description="Human-readable feedback about this step"
     )
 
+    @model_validator(mode="after")
+    def _ensure_strict_scores(self) -> "Reward":
+        """
+        Guarantee ALL score fields and metrics are strictly between 0 and 1.
+        OpenEnv validator is strict: 0.0 and 1.0 are rejected.
+        """
+        # Clamp top-level floats
+        self.redaction_score = max(_EPSILON, min(_MAX_SCORE, self.redaction_score))
+        self.discovery_bonus = max(_EPSILON, min(_MAX_SCORE, self.discovery_bonus))
+        self.efficiency_bonus = max(_EPSILON, min(_MAX_SCORE, self.efficiency_bonus))
+        self.penalty = max(_EPSILON, min(_MAX_SCORE, self.penalty))
+        self.total_reward = max(_EPSILON, min(_MAX_SCORE, self.total_reward))
+        
+        # Sync 'score' field (OpenEnv requirement)
+        self.score = self.total_reward
+        
+        # Recursively clamp metrics
+        if self.metrics:
+            for k, v in self.metrics.items():
+                if isinstance(v, float):
+                    self.metrics[k] = max(_EPSILON, min(_MAX_SCORE, v))
+        
+        return self
+
     class Config:
         json_schema_extra = {
             "example": {
                 "redaction_score": 0.6,
                 "discovery_bonus": 0.2,
-                "efficiency_bonus": 0.0,
-                "penalty": 0.0,
+                "efficiency_bonus": 0.0001,
+                "penalty": 0.0001,
                 "total_reward": 0.8,
+                "score": 0.8,
                 "metrics": {
-                    "precision": 1.0,
+                    "precision": 0.9999,
                     "recall": 0.75,
                     "f1_score": 0.857,
                     "discovery_rate": 0.6,
