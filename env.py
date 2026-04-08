@@ -57,30 +57,6 @@ def safe_score(x: float) -> float:
     return max(EPSILON, min(1.0 - EPSILON, float(x)))
 
 
-def safe_nonnegative(x: float) -> float:
-    """Clamp to [0.0, +inf), allowing zero.
-    Use for counts, bonuses, or additive metrics."""
-    if x is None:
-        return 0.0
-    return max(0.0, float(x))
-
-
-def safe_score(x: float) -> float:
-    """Clamp to strictly (EPSILON, 1-EPSILON), never exactly 0.0 or 1.0.
-    Use for normal probabilities, proportions, rates."""
-    if x is None:
-        return EPSILON
-    return max(EPSILON, min(1.0 - EPSILON, float(x)))
-
-
-def safe_nonnegative(x: float) -> float:
-    """Clamp to [0.0, +inf), allowing zero.
-    Use for counts, bonuses, or additive metrics."""
-    if x is None:
-        return 0.0
-    return max(0.0, float(x))
-
-
 # ============================================================================
 # PROCEDURAL SCENARIO GENERATION
 # ============================================================================

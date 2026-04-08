@@ -285,8 +285,47 @@ def test_grader():
     )
     if not validate_grader_metrics(metrics, "(with penalty)"):
         all_valid = False
-    
-    # Test case 3: Empty ground truth (edge case)
+
+    # Test case 3: No predictions, all false negatives
+    print("\n📌 Test Case 3: No predictions (all false negatives)")
+    metrics = InvestigationGrader.compute_metrics(
+        redacted=set(),
+        ground_truth={"email1", "email2", "ip1", "token1"},
+        discovered={"email1", "email2", "ip1", "token1"},
+        steps_used=10,
+        steps_budget=10,
+        secret_tokens={"token1"},
+    )
+    if not validate_grader_metrics(metrics, "(no predictions)"):
+        all_valid = False
+
+    # Test case 4: All false positives
+    print("\n📌 Test Case 4: All false positives")
+    metrics = InvestigationGrader.compute_metrics(
+        redacted={"bad1", "bad2", "bad3"},
+        ground_truth={"email1", "email2"},
+        discovered={"bad1", "bad2", "bad3"},
+        steps_used=5,
+        steps_budget=10,
+        secret_tokens=set(),
+    )
+    if not validate_grader_metrics(metrics, "(all false positives)"):
+        all_valid = False
+
+    # Test case 5: Partial overlap
+    print("\n📌 Test Case 5: Partial overlap")
+    metrics = InvestigationGrader.compute_metrics(
+        redacted={"email1", "bad"},
+        ground_truth={"email1", "email2", "ip1"},
+        discovered={"email1", "email2"},
+        steps_used=6,
+        steps_budget=10,
+        secret_tokens={"email1"},
+    )
+    if not validate_grader_metrics(metrics, "(partial overlap)"):
+        all_valid = False
+
+    # Test case 6: Empty ground truth (edge case)
     print("\n📌 Test Case 3: Edge case - empty scenario")
     metrics = InvestigationGrader.compute_metrics(
         redacted=set(),

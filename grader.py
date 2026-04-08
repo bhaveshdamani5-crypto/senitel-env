@@ -26,6 +26,26 @@ MAX_SCORE = 1.0 - EPSILON
 NEUTRAL_SCORE = 0.5
 
 
+def strictly_bound(value: float) -> float:
+    """Clamp scores strictly to [MIN_SCORE, MAX_SCORE] for validator safety."""
+    if value is None:
+        return MIN_SCORE
+    value = float(value)
+    if value <= MIN_SCORE:
+        return MIN_SCORE
+    if value >= MAX_SCORE:
+        return MAX_SCORE
+    return value
+
+
+def _assert_safe_score(field_name: str, value: float) -> None:
+    """Assert that a score is within safe bounds for validator safety."""
+    assert isinstance(value, float), f"{field_name} must be float, got {type(value).__name__}"
+    assert MIN_SCORE <= value <= MAX_SCORE, (
+        f"{field_name}={value} out of safe range [{MIN_SCORE}, {MAX_SCORE}]"
+    )
+
+
 class InvestigationGrader:
     """Evaluates the agent's investigation and redaction performance."""
 
@@ -54,7 +74,7 @@ class InvestigationGrader:
         
         # ====== EDGE CASE: Empty ground truth ======
         # No work to grade → return neutral bounded scores (avoid boundary sentinels)
-        neutral_clamped = max(MIN_SCORE, min(MAX_SCORE, NEUTRAL_SCORE))
+        neutral_clamped = strictly_bound(NEUTRAL_SCORE)
         if total_pii == 0:
             return {
                 # Score fields - all return neutral bounded scores
@@ -85,7 +105,7 @@ class InvestigationGrader:
                 "efficiency_bonus": neutral_clamped,
                 
                 # Metadata
-                "grade": "F",
+                "grade": InvestigationGrader._letter_grade(neutral_clamped),
             }
         
         # ====== NORMAL CASE: Non-empty ground truth ======
@@ -104,22 +124,22 @@ class InvestigationGrader:
             precision = true_positives / (true_positives + false_positives)
         else:
             precision = MIN_SCORE  # No redactions made → minimal score
-        precision = max(MIN_SCORE, min(MAX_SCORE, precision))
+        precision = strictly_bound(precision)
         
         # ====== RECALL: TP / total ======
         recall = true_positives / total_pii  # Always valid (total_pii > 0)
-        recall = max(MIN_SCORE, min(MAX_SCORE, recall))
+        recall = strictly_bound(recall)
         
         # ====== F1 SCORE: 2 * P * R / (P + R) ======
         if precision + recall > 0:
             f1 = 2 * precision * recall / (precision + recall)
         else:
             f1 = MIN_SCORE
-        f1 = max(MIN_SCORE, min(MAX_SCORE, f1))
+        f1 = strictly_bound(f1)
         
         # ====== DISCOVERY RATE: correct_discoveries / total ======
         discovery_rate = discovered_correct / total_pii
-        discovery_rate = max(MIN_SCORE, min(MAX_SCORE, discovery_rate))
+        discovery_rate = strictly_bound(discovery_rate)
         
         # ====== EFFICIENCY: steps_saved / steps_budget ======
         steps_saved = max(0, steps_budget - steps_used)  # Always non-negative
@@ -127,13 +147,13 @@ class InvestigationGrader:
             efficiency = steps_saved / steps_budget
         else:
             efficiency = MIN_SCORE
-        efficiency = max(MIN_SCORE, min(MAX_SCORE, efficiency))
+        efficiency = strictly_bound(efficiency)
         
         # ====== COMPONENT SCORES (for breakdown, all bounded) ======
-        f1_component = max(MIN_SCORE, min(MAX_SCORE, f1 * 0.70))
-        discovery_component = max(MIN_SCORE, min(MAX_SCORE, discovery_rate * 0.20))
-        recall_component = max(MIN_SCORE, min(MAX_SCORE, recall * 0.10))
-        efficiency_bonus = max(MIN_SCORE, min(MAX_SCORE, efficiency * 0.05))
+        f1_component = strictly_bound(f1 * 0.70)
+        discovery_component = strictly_bound(discovery_rate * 0.20)
+        recall_component = strictly_bound(recall * 0.10)
+        efficiency_bonus = strictly_bound(efficiency * 0.05)
         
         # ====== SECRET PENALTY (internal deduction only, NOT returned as score) ======
         # Negative penalty for missed secrets: -0.20 per secret missed (reduced from -0.30 for less harsh impact)
@@ -144,7 +164,7 @@ class InvestigationGrader:
         raw_score = f1_component + discovery_component + recall_component + efficiency_bonus + secret_penalty
         
         # Clamp final score to valid range
-        total_score = max(MIN_SCORE, min(MAX_SCORE, raw_score))
+        total_score = strictly_bound(raw_score)
         
         # ====== LETTER GRADE ======
         grade = InvestigationGrader._letter_grade(total_score)
@@ -152,7 +172,7 @@ class InvestigationGrader:
         # ====== BUILD RESULT ======
         # CRITICAL: Only return bounded scores and raw counts.
         # No negative values. No MAX_SCORE for empty cases.
-        return {
+        metrics = {
             # ===== SCORE FIELDS (all strictly bounded) =====
             "precision": precision,
             "recall": recall,
@@ -181,6 +201,15 @@ class InvestigationGrader:
             # ===== METADATA =====
             "grade": grade,
         }
+
+        for field in [
+            "precision", "recall", "f1_score", "discovery_rate", "efficiency",
+            "f1_component", "discovery_component", "recall_component", "efficiency_bonus",
+            "total_score",
+        ]:
+            _assert_safe_score(field, metrics[field])
+
+        return metrics
 
     @staticmethod
     def _letter_grade(score: float) -> str:
