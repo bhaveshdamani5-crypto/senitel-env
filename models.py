@@ -10,7 +10,7 @@ from typing import List, Dict, Optional, Any
 from enum import Enum
 
 # Scores must be strictly between 0 and 1 (not 0.0 or 1.0)
-_EPSILON = 0.0001
+_EPSILON = 1e-6
 _MAX_SCORE = 1.0 - _EPSILON
 
 
