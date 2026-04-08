@@ -31,7 +31,7 @@ from models import (
 # ============================================================================
 
 # Scores must be strictly between 0 and 1, not exactly 0.0 or 1.0
-EPSILON = 0.001
+EPSILON = 0.0001
 MIN_SCORE = EPSILON
 MAX_SCORE = 1.0 - EPSILON
 
@@ -1027,9 +1027,9 @@ class SentinelEnvironment:
         discovery_component = discovery_rate * 0.2  # Discovery is 20%
         completeness = recall * 0.1  # Raw recall is 10%
 
-        # Calculate raw total before bounds, then clamp
+        # Calculate raw total before bounds, then clamp strictly between 0 and 1
         raw_total = base_score + discovery_component + completeness + efficiency_bonus + secret_penalty
-        total_reward = safe_score(raw_total)
+        total_reward = max(MIN_SCORE, min(MAX_SCORE, raw_total))
 
         hint = f"📊 Final Score: {total_reward:.3f} | F1: {f1:.3f} | Discovery: {discovery_rate:.0%} | "
         hint += f"Redacted: {true_positives}/{total_pii}"

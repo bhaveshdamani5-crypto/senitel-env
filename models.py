@@ -10,7 +10,7 @@ from typing import List, Dict, Optional, Any
 from enum import Enum
 
 # Scores must be strictly between 0 and 1 (not 0.0 or 1.0)
-_EPSILON = 0.001
+_EPSILON = 0.0001
 _MAX_SCORE = 1.0 - _EPSILON
 
 
@@ -151,7 +151,7 @@ class Observation(BaseModel):
                 "steps_used": 1,
                 "difficulty": "medium",
                 "hint": "Try investigating the IP address to discover connected users.",
-                "score_so_far": 0.001,
+                "score_so_far": 0.0001,
                 "total_pii_to_find": 8,
                 "pii_found_count": 0,
             }

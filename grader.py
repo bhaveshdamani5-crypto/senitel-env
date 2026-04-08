@@ -17,7 +17,7 @@ Scoring components:
 from typing import Dict, Set, List, Tuple, Any
 
 # Epsilon bounds: scores must be strictly between 0 and 1 (not exactly 0.0 or 1.0)
-EPSILON = 0.001
+EPSILON = 0.0001
 MIN_SCORE = EPSILON
 MAX_SCORE = 1.0 - EPSILON
 
@@ -86,8 +86,8 @@ class InvestigationGrader:
         secret_penalty = -0.30 * secrets_missed
 
         # Calculate raw total before clamping
-        raw_total = f1_component + discovery_component + recall_component + efficiency_bonus + secret_penalty
-        total_score = max(MIN_SCORE, min(MAX_SCORE, raw_total))
+        raw_score = f1_component + discovery_component + recall_component + efficiency_bonus + secret_penalty
+        total_score = max(MIN_SCORE, min(MAX_SCORE, raw_score))
 
         # Letter grade
         grade = InvestigationGrader._letter_grade(total_score)
