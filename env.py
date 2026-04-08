@@ -998,7 +998,7 @@ class SentinelEnvironment:
             redaction_score=strictly_bound(base_score + completeness),
             discovery_bonus=strictly_bound(discovery_component),
             efficiency_bonus=strictly_bound(efficiency_bonus),
-            penalty=strictly_bound(secret_penalty),
+            penalty=secret_penalty,  # Raw penalty, not a score - keep negative
             total_reward=strictly_bound(total_reward),
             feedback=hint,
             metrics={
