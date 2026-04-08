@@ -27,6 +27,16 @@ from models import (
 
 
 # ============================================================================
+# EPSILON BOUNDS FOR SCORE CLAMPING
+# ============================================================================
+
+# Scores must be strictly between 0 and 1, not exactly 0.0 or 1.0
+EPSILON = 0.0001
+MIN_SCORE = EPSILON
+MAX_SCORE = 1.0 - EPSILON
+
+
+# ============================================================================
 # PROCEDURAL SCENARIO GENERATION
 # ============================================================================
 
@@ -999,9 +1009,9 @@ class SentinelEnvironment:
                 "false_negatives": false_negatives,
                 "steps_used": self.steps_used,
                 "steps_budget": budget,
-                "total_score": max(0.0, min(1.0, total_reward)),
+                "total_score": max(MIN_SCORE, min(MAX_SCORE, total_reward)),
                 "total_pii": total_pii,
-                "grade": self._letter_grade(max(0.0, min(1.0, total_reward))),
+                "grade": self._letter_grade(max(MIN_SCORE, min(MAX_SCORE, total_reward))),
             },
         ), hint
 

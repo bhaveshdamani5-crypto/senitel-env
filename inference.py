@@ -223,28 +223,29 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
       5. SUBMIT
     
     Gracefully handles API errors and returns fallback result.
+    CRITICAL: [END] is guaranteed to print even on exception.
     """
+    env = None
+    step_num = 0
+    episode_rewards = []
+    result = None
+    
     try:
         env = SentinelEnvironment()
         reset_result = env.reset(difficulty=difficulty, seed=seed)
         obs = reset_result.observation
 
-        print(f"[START] difficulty={difficulty} budget={obs.steps_remaining} "
-              f"total_pii={obs.total_pii_to_find} env=sentinel-log-shield model={MODEL_NAME}")
+        print(f"[START] task=investigation env=sentinel-log-shield model={MODEL_NAME}")
 
         all_found_pii: List[Dict[str, str]] = []
         investigated: Set[str] = set()
-        episode_rewards = []
-
-        step_num = 0
-        result = None
 
         # Always start with SCAN
         step_num += 1
         result = env.step(AgentAction(action_type=ActionType.SCAN))
         obs = result.observation
         episode_rewards.append(result.reward.total_reward)
-        print(f"[STEP] step={step_num} action=SCAN discovered={len(obs.discovered_entities)} reward={result.reward.total_reward:.3f} done=false")
+        print(f"[STEP] step={step_num} action=scan reward={result.reward.total_reward:.2f} done=false error=null")
 
         while obs.steps_remaining > 0 and not (result.terminated or result.truncated):
             if obs.steps_remaining <= 1:
@@ -252,7 +253,7 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
                 result = env.step(AgentAction(action_type=ActionType.SUBMIT))
                 obs = result.observation
                 episode_rewards.append(result.reward.total_reward)
-                print(f"[STEP] step={step_num} action=SUBMIT reward={result.reward.total_reward:.3f} done=true")
+                print(f"[STEP] step={step_num} action=submit reward={result.reward.total_reward:.2f} done=true error=null")
                 break
 
             all_found_pii = [{"original": e, "type": _classify_entity(e)} for e in obs.discovered_entities]
@@ -276,7 +277,7 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
                 result = env.step(AgentAction(action_type=ActionType.SCAN))
                 obs = result.observation
                 episode_rewards.append(result.reward.total_reward)
-                print(f"[STEP] step={step_num} action=SCAN reward={result.reward.total_reward:.3f} done=false")
+                print(f"[STEP] step={step_num} action=scan reward={result.reward.total_reward:.2f} done=false error=null")
                 continue
 
             if act == "investigate":
@@ -287,14 +288,14 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
                     result = env.step(AgentAction(action_type=ActionType.SCAN))
                     obs = result.observation
                     episode_rewards.append(result.reward.total_reward)
-                    print(f"[STEP] step={step_num} action=SCAN(invalid_target) reward={result.reward.total_reward:.3f} done=false")
+                    print(f"[STEP] step={step_num} action=scan reward={result.reward.total_reward:.2f} done=false error=null")
                     continue
                 investigated.add(target)
                 step_num += 1
                 result = env.step(AgentAction(action_type=ActionType.INVESTIGATE, target_entity=target))
                 obs = result.observation
                 episode_rewards.append(result.reward.total_reward)
-                print(f"[STEP] step={step_num} action=INVESTIGATE({target}) reward={result.reward.total_reward:.3f} done=false")
+                print(f"[STEP] step={step_num} action=investigate reward={result.reward.total_reward:.2f} done=false error=null")
                 continue
 
             if act == "redact":
@@ -302,7 +303,7 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
                 result = env.step(AgentAction(action_type=ActionType.REDACT, redactions=all_found_pii))
                 obs = result.observation
                 episode_rewards.append(result.reward.total_reward)
-                print(f"[STEP] step={step_num} action=REDACT({len(all_found_pii)}_items) reward={result.reward.total_reward:.3f} done=false")
+                print(f"[STEP] step={step_num} action=redact reward={result.reward.total_reward:.2f} done=false error=null")
                 continue
 
             if act == "submit":
@@ -310,23 +311,19 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
                 result = env.step(AgentAction(action_type=ActionType.SUBMIT))
                 obs = result.observation
                 episode_rewards.append(result.reward.total_reward)
-                print(f"[STEP] step={step_num} action=SUBMIT reward={result.reward.total_reward:.3f} done=true")
+                print(f"[STEP] step={step_num} action=submit reward={result.reward.total_reward:.2f} done=true error=null")
                 break
 
         # Final output
-        total_score = sum(episode_rewards)
         success = result.reward.metrics.get("f1_score", 0) >= 0.70 if result.reward.metrics else False
-        rewards_str = ",".join(f"{r:.3f}" for r in episode_rewards)
+        rewards_str = ",".join(f"{r:.2f}" for r in episode_rewards) if episode_rewards else ""
 
-        print(f"[END] success={'true' if success else 'false'} steps={step_num} "
-              f"score={total_score:.3f} f1={result.reward.metrics.get('f1_score', 0):.3f} "
-              f"discovery={result.reward.metrics.get('discovery_rate', 0):.3f} "
-              f"rewards={rewards_str}")
+        print(f"[END] success={'true' if success else 'false'} steps={step_num} rewards={rewards_str}")
 
         return {
             "difficulty": difficulty,
             "steps": step_num,
-            "total_score": total_score,
+            "total_score": sum(episode_rewards),
             "f1_score": result.reward.metrics.get("f1_score", 0),
             "discovery_rate": result.reward.metrics.get("discovery_rate", 0),
             "success": success,
@@ -335,18 +332,21 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
         }
     
     except Exception as e:
+        # Ensure [END] is printed even on exception
+        rewards_str = ",".join(f"{r:.2f}" for r in episode_rewards) if episode_rewards else ""
+        print(f"[END] success=false steps={step_num} rewards={rewards_str}")
         print(f"[ERROR] Episode crashed: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
         # Return a default failed result so benchmarking can continue
         return {
             "difficulty": difficulty,
-            "steps": 0,
-            "total_score": 0.0,
+            "steps": step_num,
+            "total_score": sum(episode_rewards),
             "f1_score": 0.0,
             "discovery_rate": 0.0,
             "success": False,
-            "rewards": [],
+            "rewards": episode_rewards,
             "metrics": {},
             "error": str(e),
         }
