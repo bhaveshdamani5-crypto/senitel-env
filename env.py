@@ -652,7 +652,7 @@ class SentinelEnvironment:
 
         # Episode state
         self.steps_used = 0
-        self.total_reward = 0.0
+        self.total_reward = EPSILON
         self.action_history: List[Dict[str, Any]] = []
 
         # Investigation state
@@ -669,7 +669,7 @@ class SentinelEnvironment:
         self.scenario = Scenario(difficulty=diff, seed=seed)
         self.is_running = True
         self.steps_used = 0
-        self.total_reward = 0.0
+        self.total_reward = EPSILON
         self.action_history = []
         self.discovered_entities = set()
         self.investigated_entities = set()
@@ -711,7 +711,7 @@ class SentinelEnvironment:
         
         reward = Reward(
             total_reward=safe_unit(0.0),  # Default: EPSILON (0.0001)
-            penalty=safe_unit(0.0),
+            penalty=0.0,  # No penalty
             feedback="",
         )
         hint = ""
@@ -730,11 +730,9 @@ class SentinelEnvironment:
         else:
             reward = Reward(
                 total_reward=safe_unit(0.0),  # BOUNDED: use EPSILON
-                penalty=safe_unit(0.0),  # BOUNDED: use EPSILON
+                penalty=0.0,  # No penalty
                 feedback="Invalid action type.",
             )
-
-        self.total_reward += reward.total_reward
 
         # Check truncation (out of budget)
         if self.steps_used >= self.scenario.budget and not terminated:
@@ -744,9 +742,11 @@ class SentinelEnvironment:
             reward = submit_reward
             # Ensure all fields are bounded (defensive)
             reward.total_reward = safe_unit(reward.total_reward)
-            reward.penalty = safe_unit(reward.penalty)
-            self.total_reward += reward.total_reward
+            # Penalty remains raw (can be negative)
             hint = "⏰ Investigation budget exhausted. Auto-submitting findings."
+
+        self.total_reward += reward.total_reward
+        self.total_reward = safe_unit(self.total_reward)  # Clamp accumulated reward to prevent >1.0
 
         if terminated or truncated:
             self.is_running = False
@@ -825,7 +825,7 @@ class SentinelEnvironment:
             redaction_score=safe_unit(0.0),  # BOUNDED: avoid 0.0
             discovery_bonus=safe_unit(reward_val),  # BOUNDED: avoid 0.0
             total_reward=safe_unit(reward_val),  # BOUNDED: avoid 0.0
-            penalty=safe_unit(0.0),  # BOUNDED: avoid 0.0
+            penalty=0.0,  # No penalty
             feedback=f"Scan complete. {n_new} new entities discovered.",
             metrics={"new_entities": n_new, "total_discovered": len(self.discovered_entities)},
         ), hint
@@ -835,14 +835,14 @@ class SentinelEnvironment:
         if not target:
             return Reward(
                 total_reward=safe_unit(0.0),  # BOUNDED: use EPSILON
-                penalty=safe_unit(0.0),  # BOUNDED: use EPSILON
+                penalty=0.0,  # No penalty
                 feedback="INVESTIGATE requires a target_entity.",
             ), "Please provide a target_entity to investigate."
 
         if target in self.investigated_entities:
             return Reward(
                 total_reward=safe_unit(0.0),  # BOUNDED: use EPSILON
-                penalty=safe_unit(0.0),  # BOUNDED: use EPSILON
+                penalty=0.0,  # No penalty
                 feedback=f"Already investigated '{target}'. Try a different entity.",
             ), f"'{target}' was already investigated. Choose another entity."
 
@@ -852,7 +852,7 @@ class SentinelEnvironment:
         if self.scenario and target in getattr(self.scenario, "honeypots", set()):
             return Reward(
                 total_reward=safe_unit(0.0),  # BOUNDED: use EPSILON
-                penalty=safe_unit(0.0),  # BOUNDED: use EPSILON
+                penalty=-0.5,  # Raw negative penalty for honeypot
                 feedback=f"⚠️ Honeypot triggered: '{target}' was a canary decoy. Penalty applied.",
                 metrics={"honeypot_triggered": 1},
             ), "Honeypot triggered. Avoid investigating obvious decoys."
@@ -903,7 +903,7 @@ class SentinelEnvironment:
         if newly_visible == 0 and len(newly_discovered) == 0:
             return Reward(
                 total_reward=safe_unit(0.0),  # BOUNDED: use EPSILON
-                penalty=safe_unit(0.0),  # BOUNDED: use EPSILON
+                penalty=0.0,  # No penalty
                 feedback=f"Dead-end investigation: '{target}' revealed nothing useful.",
                 metrics={"deadend": 1},
             ), f"'{target}' was a dead-end. Prioritize other entities."
@@ -912,7 +912,7 @@ class SentinelEnvironment:
             redaction_score=safe_unit(0.0),  # BOUNDED: avoid 0.0
             discovery_bonus=safe_unit(discovery_bonus),  # BOUNDED: avoid 0.0
             efficiency_bonus=safe_unit(0.0),  # BOUNDED: avoid 0.0
-            penalty=safe_unit(0.0),  # BOUNDED: avoid 0.0
+            penalty=0.0,  # No penalty
             total_reward=safe_unit(discovery_bonus),  # BOUNDED: avoid 0.0
             feedback=f"Investigated '{target}'. Found {len(newly_discovered)} new entities, {newly_visible} new logs.",
             metrics={
@@ -927,7 +927,7 @@ class SentinelEnvironment:
         if not redactions:
             return Reward(
                 total_reward=safe_unit(0.0),  # BOUNDED: use EPSILON
-                penalty=safe_unit(0.0),  # BOUNDED: use EPSILON
+                penalty=0.0,  # No penalty
                 feedback="No redactions provided.",
             ), "Please provide redactions: [{'original': '...', 'type': 'email|ip|username|token'}]"
 
@@ -956,11 +956,6 @@ class SentinelEnvironment:
         
         # Raw negative penalty (for semantic tracking only, not returned as score)
         raw_penalty = -0.25 * min(false_positives, 4)  # Max penalty -1.0 for 4+ false positives
-        
-        # Convert penalty to bounded (0, 1) penalty factor
-        # false_positives=0 → penalty_factor=MAX_SCORE (no penalty)
-        # false_positives≥4 → penalty_factor=EPSILON (maximum penalty)
-        penalty_factor = safe_unit(1.0 - EPSILON - (0.25 * min(false_positives, 4)))
 
         # Check if secrets were redacted (bonus)
         secret_tokens = self.scenario.all_pii.get("token", set())
@@ -973,7 +968,7 @@ class SentinelEnvironment:
 
         # Coverage so far — BOUNDED to avoid 0.0 and 1.0 extremes
         coverage_raw = len(self.redacted_pii) / total_pii if total_pii > 0 else 0.0
-        coverage = safe_score(coverage_raw)
+        coverage = safe_unit(coverage_raw)
 
         hint = f"Redacted {correct} items correctly."
         if false_positives:
@@ -986,7 +981,7 @@ class SentinelEnvironment:
 
         return Reward(
             redaction_score=safe_unit(redaction_score),  # BOUNDED: avoid 0.0
-            penalty=penalty_factor,  # Bounded (0,1) penalty factor - NO negative values
+            penalty=raw_penalty,  # Raw negative penalty
             discovery_bonus=safe_unit(secret_bonus),  # BOUNDED: avoid 0.0
             total_reward=safe_unit(total_reward),  # BOUNDED: avoid 0.0
             feedback=f"{correct} correct, {false_positives} false positives, {already_redacted} duplicates.",
@@ -1036,11 +1031,6 @@ class SentinelEnvironment:
         raw_total = base_score + discovery_component + completeness + efficiency_bonus + secret_penalty
         total_reward = safe_score(raw_total)
 
-        # Compute penalty factor: convert negative penalty to bounded (0, 1) value
-        # 0 secrets missed → MAX_SCORE (no penalty)
-        # 3+ secrets missed → EPSILON (maximum penalty)
-        penalty_factor = safe_unit(1.0 - EPSILON - (0.3 * min(len(missed_secrets), 3)))
-
         hint = f"📊 Final Score: {total_reward:.3f} | F1: {f1:.3f} | Discovery: {discovery_rate:.0%} | "
         hint += f"Redacted: {true_positives}/{total_pii}"
         if missed_secrets:
@@ -1050,7 +1040,7 @@ class SentinelEnvironment:
             redaction_score=safe_unit(base_score + completeness),
             discovery_bonus=safe_unit(discovery_component),
             efficiency_bonus=safe_unit(efficiency_bonus),
-            penalty=penalty_factor,  # Bounded (0, 1) penalty factor - NO negative values
+            penalty=secret_penalty,  # Raw negative penalty (not bounded positive factor)
             total_reward=safe_unit(total_reward),
             feedback=hint,
             metrics={
