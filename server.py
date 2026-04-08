@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 import re
+import base64
 from typing import Optional, List, Dict, Set
 from env import SentinelEnvironment
 from models import (
@@ -59,6 +60,22 @@ def _extract_pii(logs: List[str]) -> List[Dict[str, str]]:
             if m.group(1) not in seen: found.append({"original": m.group(1), "type": "username"}); seen.add(m.group(1))
         for m in re.finditer(r"user=([A-Za-z][A-Za-z0-9_-]+)", log, re.IGNORECASE):
             if m.group(1) not in seen: found.append({"original": m.group(1), "type": "username"}); seen.add(m.group(1))
+        for m in re.finditer(r"\+\d{1,3}-\d{3}-\d{3}-\d{4}", log):
+            if m.group() not in seen:
+                found.append({"original": m.group(), "type": "phone"})
+                seen.add(m.group())
+        # Try decoding base64 blobs that may contain secrets (e.g., b64=... -> token=sk_live_...)
+        for m in re.finditer(r"\bb64=([A-Za-z0-9+/=]{16,})\b", log):
+            b64txt = m.group(1)
+            try:
+                decoded = base64.b64decode(b64txt).decode("utf-8", errors="ignore")
+            except Exception:
+                decoded = ""
+            for sm in re.finditer(r"(?:token|key|secret)\s*=\s*([^\s\"']{8,})", decoded, re.IGNORECASE):
+                v = sm.group(1)
+                if v not in seen and len(v) > 5:
+                    found.append({"original": v, "type": "token"})
+                    seen.add(v)
         for pat in [r'\bsk_[a-zA-Z0-9_]{10,}\b', r'\bghp_[a-zA-Z0-9]{10,}\b', r'\bhf_[a-zA-Z0-9]{10,}\b',
                     r'\bAKIA[A-Z0-9]{12,}\b', r'\beyJ[a-zA-Z0-9_-]{20,}\b', r'api_key_[A-Za-z0-9]{10,}',
                     r'(?:key|token|secret|credential)\s*=\s*(\S{8,})']:
@@ -123,7 +140,13 @@ def run_demo_episode(difficulty: str = "medium") -> Dict:
         seen = {p["original"] for p in pii_items}
         for e in obs.discovered_entities:
             if e not in seen:
-                etype = "email" if "@" in e else ("ip" if re.match(r"^\d+\.\d+\.\d+\.\d+$", e) else ("token" if len(e) > 15 else "username"))
+                etype = "email" if "@" in e else (
+                    "ip" if re.match(r"^\d+\.\d+\.\d+\.\d+$", e) else (
+                        "phone" if re.match(r"^\+\d{1,3}-\d{3}-\d{3}-\d{4}$", e) else (
+                            "token" if len(e) > 15 else "username"
+                        )
+                    )
+                )
                 pii_items.append({"original": e, "type": etype})
                 seen.add(e)
         result = demo_env.step(AgentAction(action_type=ActionType.REDACT, redactions=pii_items))

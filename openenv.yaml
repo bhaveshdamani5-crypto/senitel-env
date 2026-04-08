@@ -67,23 +67,23 @@ observation_space:
 # Difficulty configuration
 difficulty_levels:
   easy:
-    users: 2
-    layers: 2
-    step_budget: 12
-    secrets: 1
-    description: "Two users, shallow investigation, generous budget"
-  medium:
     users: 3
-    layers: 3
-    step_budget: 10
-    secrets: 2
-    description: "Three users, moderate depth, balanced budget"
-  hard:
-    users: 4
-    layers: 4
+    layers: 2
     step_budget: 8
+    secrets: 1
+    description: "Three users, shallow investigation, tight budget"
+  medium:
+    users: 4
+    layers: 3
+    step_budget: 7
+    secrets: 2
+    description: "Four users, moderate depth, tighter budget"
+  hard:
+    users: 5
+    layers: 4
+    step_budget: 6
     secrets: 3
-    description: "Four users, deep investigation, tight budget"
+    description: "Five users, deep investigation, strict budget + traps"
 
 # Reward specification
 reward:

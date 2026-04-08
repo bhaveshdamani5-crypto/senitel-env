@@ -50,9 +50,9 @@ class InvestigationGrader:
         total = len(ground_truth)
         if total == 0:
             return {
-                "precision": 1.0, "recall": 1.0, "f1_score": 1.0,
-                "discovery_rate": 1.0, "efficiency": 1.0,
-                "total_score": 1.0, "grade": "S",
+                "precision": MAX_SCORE, "recall": MAX_SCORE, "f1_score": MAX_SCORE,
+                "discovery_rate": MAX_SCORE, "efficiency": MAX_SCORE,
+                "total_score": MAX_SCORE, "grade": "S",
             }
 
         # Core metrics
@@ -60,17 +60,17 @@ class InvestigationGrader:
         false_positives = len(redacted - ground_truth)
         false_negatives = len(ground_truth - redacted)
 
-        precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0.0
+        precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else MIN_SCORE
         recall = true_positives / total
-        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else MIN_SCORE
 
         # Discovery rate
         discovered_correct = len(discovered & ground_truth)
-        discovery_rate = discovered_correct / total
+        discovery_rate = discovered_correct / total if total > 0 else MIN_SCORE
 
         # Efficiency
         steps_saved = max(0, steps_budget - steps_used)
-        efficiency = steps_saved / steps_budget if steps_budget > 0 else 0.0
+        efficiency = steps_saved / steps_budget if steps_budget > 0 else MIN_SCORE
 
         # Secret handling
         secrets_found = len(secret_tokens & redacted)
@@ -92,15 +92,15 @@ class InvestigationGrader:
         grade = InvestigationGrader._letter_grade(total_score)
 
         return {
-            # Core metrics
-            "precision": round(precision, 4),
-            "recall": round(recall, 4),
-            "f1_score": round(f1, 4),
+            # Core metrics - clamp to valid range
+            "precision": round(max(MIN_SCORE, min(MAX_SCORE, precision)), 4),
+            "recall": round(max(MIN_SCORE, min(MAX_SCORE, recall)), 4),
+            "f1_score": round(max(MIN_SCORE, min(MAX_SCORE, f1)), 4),
             # Discovery
-            "discovery_rate": round(discovery_rate, 4),
+            "discovery_rate": round(max(MIN_SCORE, min(MAX_SCORE, discovery_rate)), 4),
             "discovered_count": discovered_correct,
             # Efficiency
-            "efficiency": round(efficiency, 4),
+            "efficiency": round(max(MIN_SCORE, min(MAX_SCORE, efficiency)), 4),
             "steps_used": steps_used,
             "steps_budget": steps_budget,
             "steps_saved": steps_saved,

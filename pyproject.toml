@@ -1,15 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
-name = "sentinel-log-shield"
-version = "1.0.0"
-description = "OpenEnv environment for log PII redaction"
+name = "senitel-env"
+version = "0.1.0"
+description = "Sentinel-Log-Shield: Security Investigation Environment"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Sentinel Team", email = "sentinel@example.com"}
+]
 requires-python = ">=3.10"
 dependencies = [
-  "openenv-core>=0.2.0",
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "openai>=1.3.0",
+    "python-multipart>=0.0.9",
+    "pyyaml>=6.0.1",
+    "requests>=2.31.0",
+    "openenv-core>=0.2.0",
+    "pytest>=8.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
 ]
 
 [project.scripts]
 server = "server:main"
 
-[build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
