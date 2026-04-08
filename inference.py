@@ -5,12 +5,8 @@ inference.py — Sentinel-Log-Shield v2 Baseline Agent
 Demonstrates a multi-phase investigation strategy:
   Phase 1: SCAN visible logs to discover surface-level PII
   Phase 2: INVESTIGATE entities to reveal deeper logs and secrets
-  Phase 3: REDACT all discovered PII
+  Phase 3: REDACT all discovered PII (no regex fallback)
   Phase 4: SUBMIT findings
-
-Supports two modes:
-  1. PRIMARY: LLM-guided investigation (OpenAI client with HF_TOKEN)
-  2. FALLBACK: Heuristic investigation strategy (regex + priority rules)
 
 REQUIRED ENVIRONMENT VARIABLES (Hackathon Setup):
   - HF_TOKEN: Hugging Face token for OpenAI-compatible endpoint
@@ -20,34 +16,34 @@ REQUIRED ENVIRONMENT VARIABLES (Hackathon Setup):
 
 import os
 import sys
-import re
 import json
-from typing import Optional, List, Dict, Set
+import time
+import argparse
+import statistics
+from typing import Optional, List, Dict, Set, Any
 
 # ============================================================================
 # ENVIRONMENT VARIABLES
 # ============================================================================
 
 HF_TOKEN = os.getenv("HF_TOKEN", None)
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api-inference.huggingface.co/openai/")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/openai/")
 MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-2-70b-chat-hf")
 
 if not HF_TOKEN:
-    print("[WARNING] HF_TOKEN not set. Using heuristic fallback strategy.")
-    FALLBACK_MODE = True
-else:
-    FALLBACK_MODE = False
+    raise RuntimeError(
+        "HF_TOKEN is required for the baseline inference run. "
+        "Set it as an environment variable (HF Spaces: add as a Secret)."
+    )
 
 # OpenAI client initialization
 client = None
-if HF_TOKEN:
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
-        print(f"[INFO] OpenAI Client initialized | Model: {MODEL_NAME}")
-    except Exception as e:
-        print(f"[WARNING] Failed to initialize OpenAI Client: {e}")
-        FALLBACK_MODE = True
+try:
+    from openai import OpenAI
+    client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
+    print(f"[INFO] OpenAI Client initialized | Model: {MODEL_NAME}")
+except Exception as e:
+    raise RuntimeError(f"Failed to initialize OpenAI client: {e}") from e
 
 # Import environment
 sys.path.insert(0, os.path.dirname(__file__))
@@ -55,124 +51,160 @@ from env import SentinelEnvironment
 from models import AgentAction, ActionType, Difficulty
 
 
-# ============================================================================
-# PII EXTRACTION (Agent's own detection — different from grader)
-# ============================================================================
-
-def extract_pii_from_logs(logs: List[str]) -> List[Dict[str, str]]:
-    """
-    Extract PII items from log text using regex patterns.
-
-    NOTE: These patterns are intentionally DIFFERENT from the grader's
-    ground truth. The agent must discover PII through investigation,
-    not just regex matching.
-    """
-    found = []
-    seen = set()
-
-    for log in logs:
-        # Emails
-        for match in re.finditer(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b', log):
-            val = match.group()
-            if val not in seen:
-                found.append({"original": val, "type": "email"})
-                seen.add(val)
-
-        # IPv4 addresses
-        for match in re.finditer(r'\b(?:\d{1,3}\.){3}\d{1,3}\b', log):
-            val = match.group()
-            if val not in seen and val != "255.255.255.255":
-                found.append({"original": val, "type": "ip"})
-                seen.add(val)
-
-        # Usernames in quotes: User 'Name' or user=Name
-        for match in re.finditer(r"User\s*['\"]([A-Za-z][A-Za-z0-9_-]*)['\"]", log, re.IGNORECASE):
-            val = match.group(1)
-            if val not in seen and len(val) > 1:
-                found.append({"original": val, "type": "username"})
-                seen.add(val)
-
-        # Usernames from user= patterns
-        for match in re.finditer(r"user=([A-Za-z][A-Za-z0-9_-]+)", log, re.IGNORECASE):
-            val = match.group(1)
-            if val not in seen and len(val) > 1:
-                found.append({"original": val, "type": "username"})
-                seen.add(val)
-
-        # Tokens and secrets: sk_*, ghp_*, hf_*, Bearer, AKIA*, key=, token=
-        token_patterns = [
-            (r'\bsk_[a-zA-Z0-9_]{10,}\b', "token"),
-            (r'\bghp_[a-zA-Z0-9]{10,}\b', "token"),
-            (r'\bhf_[a-zA-Z0-9]{10,}\b', "token"),
-            (r'\bAKIA[A-Z0-9]{12,}\b', "token"),
-            (r'\beyJ[a-zA-Z0-9_-]{20,}\b', "token"),
-            (r'(?:key|token|secret|credential|password)\s*=\s*(\S{8,})', "token"),
-            (r'Bearer\s+([A-Za-z0-9._-]{10,})', "token"),
-            (r'Token\s+([A-Za-z0-9._-]{10,})', "token"),
-            (r'api_key_[A-Za-z0-9]{10,}', "token"),
-        ]
-        for pattern, pii_type in token_patterns:
-            for match in re.finditer(pattern, log, re.IGNORECASE):
-                val = match.group(1) if match.lastindex else match.group(0)
-                if val not in seen and len(val) > 5:
-                    found.append({"original": val, "type": pii_type})
-                    seen.add(val)
-
-    return found
+def _is_ipv4(s: str) -> bool:
+    parts = s.split(".")
+    if len(parts) != 4:
+        return False
+    for p in parts:
+        if not p.isdigit():
+            return False
+        n = int(p)
+        if n < 0 or n > 255:
+            return False
+    return True
 
 
-def prioritize_targets(entities: List[str], investigated: Set[str]) -> List[str]:
-    """
-    Prioritize investigation targets using heuristic rules.
-    Tokens/secrets > usernames > IPs > emails (depth-first strategy).
-    """
-    def priority(entity: str) -> int:
-        if any(prefix in entity.lower() for prefix in ["sk_", "ghp_", "hf_", "akia", "Bearer"]):
-            return 0  # Highest priority: potential secrets
-        if re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", entity):
-            return 2  # IPs often connect multiple users
-        if "@" in entity:
-            return 3  # Emails
-        return 1  # Usernames connect to tokens
+def _is_phone(s: str) -> bool:
+    """Detect phone numbers in various formats."""
+    if not isinstance(s, str):
+        return False
+    s = s.strip()
+    
+    # Pattern 1: +1-XXX-XXX-XXXX (US)
+    if s.startswith("+1-"):
+        parts = s.split("-")
+        if len(parts) == 4:
+            try:
+                return (len(parts[1]) == 3 and parts[1].isdigit() and
+                        len(parts[2]) == 3 and parts[2].isdigit() and
+                        len(parts[3]) == 4 and parts[3].isdigit())
+            except:
+                return False
+    
+    # Pattern 2: +CC-XXXXX-XXXXX (India +91)
+    if s.startswith("+91-"):
+        parts = s.split("-")
+        if len(parts) == 3:
+            try:
+                return (len(parts[1]) == 5 and parts[1].isdigit() and
+                        len(parts[2]) == 5 and parts[2].isdigit())
+            except:
+                return False
+    
+    # Pattern 3: +44-20-XXXX-XXXX (UK)
+    if s.startswith("+44-"):
+        parts = s.split("-")
+        if len(parts) == 4:
+            try:
+                return (parts[1] == "20" and  # London area code
+                        len(parts[2]) == 4 and parts[2].isdigit() and
+                        len(parts[3]) == 4 and parts[3].isdigit())
+            except:
+                return False
+    
+    # Pattern 4: +1-555-XXXX-XXX (toll-free variant)
+    if s.startswith("+1-555-"):
+        parts = s.split("-")
+        if len(parts) == 4:
+            try:
+                return (len(parts[2]) == 4 and parts[2].isdigit() and
+                        len(parts[3]) == 3 and parts[3].isdigit())
+            except:
+                return False
+    
+    return False
 
-    available = [e for e in entities if e not in investigated]
-    return sorted(available, key=priority)
 
+def _classify_entity(entity: str) -> str:
+    if "@" in entity and "." in entity:
+        return "email"
+    if _is_phone(entity):
+        return "phone"
+    if _is_ipv4(entity):
+        return "ip"
+    low = entity.lower()
+    if (
+        low.startswith("sk_")
+        or low.startswith("ghp_")
+        or low.startswith("hf_")
+        or low.startswith("akia")
+        or low.startswith("eyj")
+        or low.startswith("api_key_")
+        or low.startswith("bearer ")
+        or len(entity) > 15
+    ):
+        return "token"
+    return "username"
 
 # ============================================================================
 # LLM-GUIDED INVESTIGATION (Primary mode)
 # ============================================================================
 
-def llm_choose_action(observation_summary: str) -> Optional[Dict]:
-    """Use LLM to decide the next investigation action."""
-    if not client:
-        return None
+def _llm_choose_action(observation_summary: str, *, max_retries: int = 3, timeout: int = 30) -> Dict[str, Any]:
+    """
+    Use LLM to choose the next action. Strict JSON only.
+    Retries on transient failures / JSON parse issues with exponential backoff.
+    """
+    prompt = f"""You are a security analyst investigating a data breach inside an RL environment.
 
-    prompt = f"""You are a security analyst investigating a data breach.
-Based on the current investigation state, choose the best next action.
+Choose the best next action to maximize final score under a step budget.
 
 Current State:
 {observation_summary}
 
-Available actions:
-1. SCAN - Extract PII from visible logs (do this first)
-2. INVESTIGATE <entity> - Deep-dive into an entity to reveal connected logs
-3. REDACT <items> - Submit found PII for scoring
-4. SUBMIT - End investigation
+Valid actions (must be one of these):
+- scan
+- investigate (requires target)
+- redact
+- submit
 
-Return JSON: {{"action": "scan|investigate|redact|submit", "target": "entity_name_if_investigate", "reason": "brief reason"}}
-Return ONLY valid JSON, no markdown."""
+Rules:
+- Only choose investigate targets that appear in Targets.
+- Prefer scan after new logs are revealed.
+- Avoid investigating obvious decoys if they reveal nothing.
+- Redact only after you have discovered enough entities.
 
-    try:
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
-            max_tokens=200,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        result = json.loads(response.choices[0].message.content)
-        return result
-    except Exception:
-        return None
+Return ONLY strict JSON in this schema:
+{{"action":"scan|investigate|redact|submit","target":null|string,"reason":"short"}}
+"""
+
+    last_err: Optional[Exception] = None
+    for attempt in range(max_retries):
+        try:
+            resp = client.chat.completions.create(
+                model=MODEL_NAME,
+                max_tokens=220,
+                temperature=0.3,  # Lower temperature for more consistent outputs
+                timeout=timeout,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            txt = (resp.choices[0].message.content or "").strip()
+            
+            # Try to extract JSON from response (LLM might add extra text)
+            import re as re_module
+            json_match = re_module.search(r'\{.*\}', txt, re_module.DOTALL)
+            if json_match:
+                txt = json_match.group(0)
+            
+            data = json.loads(txt)
+            if not isinstance(data, dict):
+                raise ValueError("LLM output is not a JSON object")
+            action = data.get("action", "").lower()
+            if action not in {"scan", "investigate", "redact", "submit"}:
+                raise ValueError(f"Invalid action '{action}'")
+            if action == "investigate" and not data.get("target"):
+                raise ValueError("Investigate requires a target")
+            data.setdefault("reason", "")
+            if "target" not in data:
+                data["target"] = None
+            return data
+        except Exception as e:
+            last_err = e
+            wait_time = 0.8 * (2 ** attempt)
+            if attempt < max_retries - 1:
+                time.sleep(wait_time)
+    
+    raise RuntimeError(f"LLM action selection failed after {max_retries} attempts: {last_err}") from last_err
 
 
 # ============================================================================
@@ -201,99 +233,77 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
     investigated: Set[str] = set()
     episode_rewards = []
 
-    # Phase 1: Initial SCAN
-    action = AgentAction(action_type=ActionType.SCAN)
-    result = env.step(action)
+    step_num = 0
+    result = None
+
+    # Always start with SCAN
+    step_num += 1
+    result = env.step(AgentAction(action_type=ActionType.SCAN))
     obs = result.observation
     episode_rewards.append(result.reward.total_reward)
-    print(f"[STEP] step=1 action=SCAN discovered={len(obs.discovered_entities)} "
-          f"reward={result.reward.total_reward:.3f} done=false")
+    print(f"[STEP] step={step_num} action=SCAN discovered={len(obs.discovered_entities)} reward={result.reward.total_reward:.3f} done=false")
 
-    # Collect PII from scan results
-    all_found_pii = extract_pii_from_logs(obs.visible_logs)
-
-    step_num = 1
-
-    # Phase 2: INVESTIGATE entities (depth-first)
-    while obs.steps_remaining > 2 and obs.investigation_targets:
-        step_num += 1
-        targets = prioritize_targets(obs.investigation_targets, investigated)
-        if not targets:
+    while obs.steps_remaining > 0 and not (result.terminated or result.truncated):
+        if obs.steps_remaining <= 1:
+            step_num += 1
+            result = env.step(AgentAction(action_type=ActionType.SUBMIT))
+            obs = result.observation
+            episode_rewards.append(result.reward.total_reward)
+            print(f"[STEP] step={step_num} action=SUBMIT reward={result.reward.total_reward:.3f} done=true")
             break
 
-        target = targets[0]
-        investigated.add(target)
+        all_found_pii = [{"original": e, "type": _classify_entity(e)} for e in obs.discovered_entities]
+        summary = (
+            f"Visible logs: {len(obs.visible_logs)}\n"
+            f"Discovered: {obs.discovered_entities}\n"
+            f"Targets: {obs.investigation_targets}\n"
+            f"Steps remaining: {obs.steps_remaining}\n"
+            f"Coverage so far: {obs.pii_found_count}/{obs.total_pii_to_find}\n"
+        )
+        decision = _llm_choose_action(summary)
+        act = decision["action"]
 
-        # Try LLM-guided decision
-        if client and not FALLBACK_MODE:
-            llm_decision = llm_choose_action(
-                f"Visible logs: {len(obs.visible_logs)}, "
-                f"Discovered: {obs.discovered_entities}, "
-                f"Targets: {obs.investigation_targets}, "
-                f"Steps remaining: {obs.steps_remaining}, "
-                f"PII found so far: {obs.pii_found_count}/{obs.total_pii_to_find}"
-            )
-            if llm_decision and llm_decision.get("action") == "investigate":
-                target = llm_decision.get("target", target)
+        if act == "scan":
+            step_num += 1
+            result = env.step(AgentAction(action_type=ActionType.SCAN))
+            obs = result.observation
+            episode_rewards.append(result.reward.total_reward)
+            print(f"[STEP] step={step_num} action=SCAN reward={result.reward.total_reward:.3f} done=false")
+            continue
 
-        action = AgentAction(action_type=ActionType.INVESTIGATE, target_entity=target)
-        result = env.step(action)
-        obs = result.observation
-        episode_rewards.append(result.reward.total_reward)
+        if act == "investigate":
+            target = decision.get("target")
+            if not target or target not in obs.investigation_targets or target in investigated:
+                # If invalid/repeated target, fall back to SCAN (still LLM-only; we don't pick a target heuristically)
+                step_num += 1
+                result = env.step(AgentAction(action_type=ActionType.SCAN))
+                obs = result.observation
+                episode_rewards.append(result.reward.total_reward)
+                print(f"[STEP] step={step_num} action=SCAN(invalid_target) reward={result.reward.total_reward:.3f} done=false")
+                continue
+            investigated.add(target)
+            step_num += 1
+            result = env.step(AgentAction(action_type=ActionType.INVESTIGATE, target_entity=target))
+            obs = result.observation
+            episode_rewards.append(result.reward.total_reward)
+            print(f"[STEP] step={step_num} action=INVESTIGATE({target}) reward={result.reward.total_reward:.3f} done=false")
+            continue
 
-        # Re-extract PII from updated visible logs
-        all_found_pii = extract_pii_from_logs(obs.visible_logs)
+        if act == "redact":
+            step_num += 1
+            result = env.step(AgentAction(action_type=ActionType.REDACT, redactions=all_found_pii))
+            obs = result.observation
+            episode_rewards.append(result.reward.total_reward)
+            print(f"[STEP] step={step_num} action=REDACT({len(all_found_pii)}_items) reward={result.reward.total_reward:.3f} done=false")
+            continue
 
-        print(f"[STEP] step={step_num} action=INVESTIGATE({target}) "
-              f"discovered={len(obs.discovered_entities)} "
-              f"reward={result.reward.total_reward:.3f} "
-              f"done={'true' if result.terminated or result.truncated else 'false'}")
-
-        if result.terminated or result.truncated:
+        if act == "submit":
+            step_num += 1
+            result = env.step(AgentAction(action_type=ActionType.SUBMIT))
+            obs = result.observation
+            episode_rewards.append(result.reward.total_reward)
+            print(f"[STEP] step={step_num} action=SUBMIT reward={result.reward.total_reward:.3f} done=true")
             break
-
-    # Phase 2b: Re-scan after investigation reveals new logs
-    if obs.steps_remaining > 2 and not (result.terminated or result.truncated):
-        step_num += 1
-        action = AgentAction(action_type=ActionType.SCAN)
-        result = env.step(action)
-        obs = result.observation
-        episode_rewards.append(result.reward.total_reward)
-        all_found_pii = extract_pii_from_logs(obs.visible_logs)
-        print(f"[STEP] step={step_num} action=SCAN(deep) "
-              f"discovered={len(obs.discovered_entities)} "
-              f"reward={result.reward.total_reward:.3f} done=false")
-
-    # Phase 3: REDACT all discovered PII
-    if obs.steps_remaining > 1 and all_found_pii and not (result.terminated or result.truncated):
-        step_num += 1
-        # Also include entities from observation that we might have missed with regex
-        entity_redactions = [
-            {"original": e, "type": _classify(e)}
-            for e in obs.discovered_entities
-        ]
-        # Merge, dedup
-        seen_originals = {r["original"] for r in all_found_pii}
-        for er in entity_redactions:
-            if er["original"] not in seen_originals:
-                all_found_pii.append(er)
-                seen_originals.add(er["original"])
-
-        action = AgentAction(action_type=ActionType.REDACT, redactions=all_found_pii)
-        result = env.step(action)
-        obs = result.observation
-        episode_rewards.append(result.reward.total_reward)
-        print(f"[STEP] step={step_num} action=REDACT({len(all_found_pii)}_items) "
-              f"coverage={obs.pii_found_count}/{obs.total_pii_to_find} "
-              f"reward={result.reward.total_reward:.3f} done=false")
-
-    # Phase 4: SUBMIT
-    if not (result.terminated or result.truncated):
-        step_num += 1
-        action = AgentAction(action_type=ActionType.SUBMIT)
-        result = env.step(action)
-        obs = result.observation
-        episode_rewards.append(result.reward.total_reward)
 
     # Final output
     total_score = sum(episode_rewards)
@@ -317,44 +327,39 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
     }
 
 
-def _classify(entity: str) -> str:
-    """Quick entity type classification for redaction."""
-    if "@" in entity and "." in entity:
-        return "email"
-    if re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", entity):
-        return "ip"
-    if any(prefix in entity.lower() for prefix in ["sk_", "ghp_", "hf_", "akia", "eyj", "api_key", "bearer"]):
-        return "token"
-    return "username"
-
-
 # ============================================================================
 # MAIN
 # ============================================================================
 
 def main():
     """Run investigation episodes across all difficulty levels."""
+    parser = argparse.ArgumentParser(description="Sentinel-Log-Shield baseline (LLM-only).")
+    parser.add_argument("--seeds", type=int, default=1, help="Number of seeds per difficulty for benchmarking.")
+    parser.add_argument("--seed-start", type=int, default=0, help="Starting seed (inclusive).")
+    args = parser.parse_args()
+
     print("=" * 70)
     print("Sentinel-Log-Shield v2: Interactive Investigation Agent")
     print("=" * 70)
     print(f"Model: {MODEL_NAME}")
     print(f"API Base: {API_BASE_URL}")
-    print(f"LLM Mode: {bool(client and not FALLBACK_MODE)}")
-    print(f"Fallback Mode: {FALLBACK_MODE}")
+    print("LLM Mode: True")
     print("=" * 70)
     print()
 
     difficulties = ["easy", "medium", "hard"]
     results = []
 
-    for i, diff in enumerate(difficulties):
-        if i > 0:
-            print()
-        print(f"{'--' * 30}")
-        print(f"  Episode {i + 1}: {diff.upper()} difficulty")
-        print(f"{'--' * 30}")
-        result = run_episode(difficulty=diff)
-        results.append(result)
+    for diff in difficulties:
+        for si in range(args.seeds):
+            seed = args.seed_start + si
+            if results:
+                print()
+            print(f"{'--' * 30}")
+            print(f"  Episode: {diff.upper()} seed={seed}")
+            print(f"{'--' * 30}")
+            result = run_episode(difficulty=diff, seed=seed)
+            results.append(result)
 
     # Summary table
     print()
@@ -370,8 +375,10 @@ def main():
 
     avg_f1 = sum(r["f1_score"] for r in results) / len(results)
     avg_score = sum(r["total_score"] for r in results) / len(results)
+    scores = [r["total_score"] for r in results]
+    score_std = statistics.pstdev(scores) if len(scores) > 1 else 0.0
     print(f"  {'--' * 28}")
-    print(f"  {'AVERAGE':<12} {'':>6} {avg_f1:>8.3f} {'':>10} {avg_score:>8.3f}")
+    print(f"  {'AVERAGE':<12} {'':>6} {avg_f1:>8.3f} {'':>10} {avg_score:>8.3f}  (std={score_std:.3f})")
     print()
 
 

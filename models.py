@@ -47,7 +47,7 @@ class AgentAction(BaseModel):
     )
     redactions: Optional[List[Dict[str, str]]] = Field(
         None,
-        description="PII items to redact: [{'original': '...', 'type': 'email|ip|username|token|secret'}]"
+        description="PII items to redact: [{'original': '...', 'type': 'email|ip|username|token|phone|secret'}]"
     )
 
     class Config:

@@ -18,6 +18,7 @@ import re
 import random
 import hashlib
 import string
+import base64
 from typing import Dict, List, Set, Tuple, Optional, Any
 from models import (
     ActionType, AgentAction, Difficulty, Observation, Reward,
@@ -47,6 +48,148 @@ SERVICES = [
     "payment-service", "data-pipeline", "config-server", "ci-runner",
     "log-aggregator", "identity-provider", "cache-redis", "db-postgres",
 ]
+
+# ============================================================================
+# DECOYS / NOISE (to punish naive regex agents)
+# ============================================================================
+
+DECOY_EMAILS = [
+    "test@example.com",
+    "user@example.com",
+    "docs@example.com",
+    "noreply@example.com",
+    "security@example.com",
+    "support@example.org",
+    "info@example.net",
+    "contact@test.com",
+    "admin@example.io",
+    "help@example.dev",
+]
+
+DECOY_IPS = [
+    "127.0.0.1",
+    "0.0.0.0",
+    "255.255.255.255",
+    "192.0.2.123",   # TEST-NET-1
+    "198.51.100.42", # TEST-NET-2
+    "203.0.113.5",   # TEST-NET-3
+    "192.168.1.1",
+    "10.0.0.1",
+    "172.16.0.1",
+    "1.1.1.1",
+    "8.8.8.8",
+]
+
+DECOY_USERNAMES = [
+    "admin",
+    "root",
+    "localhost",
+    "operator",
+    "guest",
+    "system",
+    "service",
+    "automation",
+    "webhook",
+    "bot",
+]
+
+DECOY_PHONE_NUMBERS = [
+    "+1-555-0100",
+    "+1-555-0000",
+    "+1-555-0199",
+    "+91-00000-00000",
+    "+44-20-7946-0958",
+    "+33-1-42-86-82-00",
+]
+
+
+def _make_noise_logs(rng: random.Random, n: int) -> List[Tuple[str, Dict[str, Set[str]]]]:
+    """
+    Generate logs that LOOK like they contain PII, but are decoys and MUST NOT
+    appear in ground truth (`all_pii_flat`). These should trigger false positives.
+    """
+    def gen_decoy_token():
+        """Generate token-like strings that are NOT real secrets."""
+        prefixes = ["sk_test_", "pk_test_", "api_test_", "dev_key_"]
+        charset = string.ascii_letters + string.digits
+        return rng.choice(prefixes) + "".join(rng.choices(charset, k=20))
+    
+    def gen_decoy_phone():
+        """Generate phone-like patterns that are NOT real phones."""
+        patterns = [
+            "+1-555-{:04d}".format(rng.randint(1000, 9999)),
+            "+1-800-{:04d}".format(rng.randint(1000, 9999)),
+            "+44-20-7946-{:04d}".format(rng.randint(1000, 9999)),
+            "+1-555-0000",
+            "(555) 555-{:04d}".format(rng.randint(1000, 9999)),
+        ]
+        return rng.choice(patterns)
+    
+    templates = [
+        lambda: (
+            f"{_random_timestamp()} DOCS: Example contact {rng.choice(DECOY_EMAILS)} for integration testing",
+            {},  # decoy only
+        ),
+        lambda: (
+            f"{_random_timestamp()} DOCS: Set bind_address={rng.choice(DECOY_IPS)} (example value)",
+            {},
+        ),
+        lambda: (
+            f"{_random_timestamp()} README: Use user='{rng.choice(DECOY_USERNAMES)}' in local dev (not real user)",
+            {},
+        ),
+        lambda: (
+            f"{_random_timestamp()} PLAYBOOK: Call test line {rng.choice(DECOY_PHONE_NUMBERS)} for staging verification",
+            {},
+        ),
+        # Hard mode: obfuscated tokens that look real
+        lambda: (
+            f"{_random_timestamp()} CONFIG: Test API key {gen_decoy_token()} (development credential)",
+            {},
+        ),
+        # Hard mode: base64-encoded decoy secrets
+        lambda: (
+            b64_secret := base64.b64encode(b"mock_secret=abcd1234").decode(),
+            f"{_random_timestamp()} LOG: Cached value b64={b64_secret} (mock data, purge after test)",
+            {},
+        ),
+        # Hard mode: context-dependent IPs (config, not breach-related)
+        lambda: (
+            f"{_random_timestamp()} CONFIG: DNS servers [8.8.8.8, 8.8.4.4] (public, not sensitive)",
+            {},
+        ),
+        # Hard mode: realistic-looking but fake phone patterns
+        lambda: (
+            f"{_random_timestamp()} DOCS: Support hotline {gen_decoy_phone()} (test number)",
+            {},
+        ),
+        # Hard mode: natural language false positives
+        lambda: (
+            f"{_random_timestamp()} NOTES: Email admin or root for permission issues (not real users)",
+            {},
+        ),
+    ]
+    out: List[Tuple[str, Dict[str, Set[str]]]] = []
+    for _ in range(max(0, n)):
+        # Skip templates requiring tuple unpacking
+        selected = None
+        attempts = 0
+        while selected is None and attempts < 10:
+            try:
+                t = rng.choice(templates)
+                result = t()
+                # Handle both 2-tuple and 3-tuple returns
+                if isinstance(result, tuple) and len(result) == 3 and isinstance(result[1], str):
+                    # Special case for base64 template (has unpacking)
+                    log, pii = result[1], result[2]
+                    selected = (log, pii)
+                else:
+                    selected = result
+            except Exception:
+                attempts += 1
+        if selected:
+            out.append(selected)
+    return out
 
 TABLES = [
     "users", "transactions", "sessions", "audit_log", "credentials",
@@ -138,6 +281,16 @@ def _make_log_templates():
                 f"{ts} AUDIT: User '{u}' ({e}) performed password reset from {ip}",
                 {"username": {u}, "email": {e}, "ip": {ip}},
             ),
+            # Natural language PII (harder than structured user='x')
+            lambda u, e, ip, ts: (
+                f"{ts} NOTES: Discussed breach response with {u.title()} Johnson and Bob Chen (internal meeting)",
+                {"username": {u}},  # treat name as the user identity token for grading
+            ),
+            # Context-dependent IP: server IP (config) should NOT be treated as PII by naive agents
+            lambda u, e, ip, ts: (
+                f"{ts} CONFIG: service_ip={ip} for api-gateway (server address, not client PII)",
+                {},  # deliberately NOT PII
+            ),
         ],
         # Investigation-revealed templates (Layer 1+)
         "user_linked": [
@@ -176,6 +329,16 @@ def _make_log_templates():
                 f"{ts} TRACE: Stack dump includes secret {tok} at {svc}:L{random.randint(10, 300)}",
                 {"token": {tok}},
             ),
+            # Obfuscated secrets: partially masked but still should be redacted by capable agents
+            lambda u, tok, ts, svc, tok_type: (
+                f"{ts} DEBUG [{svc}]: Credential observed sk_l**e_{tok[-8:]} (masked for logs)",
+                {"token": {tok}},  # ground truth is full token; partial in text increases difficulty
+            ),
+            # Base64-encoded secret value (agent can decode)
+            lambda u, tok, ts, svc, tok_type: (
+                f"{ts} CONFIG_DUMP [{svc}]: b64={base64.b64encode(f'token={tok}'.encode()).decode()}",
+                {"token": {tok}},
+            ),
         ],
         # IP-linked templates (revealed when investigating an IP)
         "ip_linked": [
@@ -206,13 +369,15 @@ class Scenario:
 
         # Difficulty parameters
         cfg = {
-            Difficulty.EASY:   {"n_users": 2, "n_layers": 2, "budget": 12, "n_secrets": 1},
-            Difficulty.MEDIUM: {"n_users": 3, "n_layers": 3, "budget": 10, "n_secrets": 2},
-            Difficulty.HARD:   {"n_users": 4, "n_layers": 4, "budget": 8,  "n_secrets": 3},
+            Difficulty.EASY:   {"n_users": 3, "n_layers": 2, "budget": 8, "n_secrets": 1, "n_decoys": 2, "n_deadends": 1},
+            Difficulty.MEDIUM: {"n_users": 4, "n_layers": 3, "budget": 7, "n_secrets": 2, "n_decoys": 4, "n_deadends": 2},
+            Difficulty.HARD:   {"n_users": 5, "n_layers": 4, "budget": 6, "n_secrets": 3, "n_decoys": 6, "n_deadends": 4},
         }[difficulty]
 
         self.budget = cfg["budget"]
         self.n_layers = cfg["n_layers"]
+        self.n_decoys = cfg["n_decoys"]
+        self.n_deadends = cfg["n_deadends"]
 
         # Generate entities
         names = self.rng.sample(FIRST_NAMES, cfg["n_users"])
@@ -259,14 +424,30 @@ class Scenario:
             for ip in self.users[owner]["ips"]:
                 self.entity_graph.setdefault(ip, set()).add(sinfo["token"])
 
+        # Dead-end entities: exist in graph but investigating yields no useful logs/entities.
+        # These pressure the agent to prioritize.
+        self.deadend_entities: Set[str] = set()
+        for i in range(self.n_deadends):
+            ent = f"decoy_entity_{i}_{self.rng.choice(['cache','node','svc'])}"
+            self.deadend_entities.add(ent)
+            self.entity_graph[ent] = set()
+
+        # Honeypots: investigating them applies a penalty (canary traps).
+        self.honeypots: Set[str] = set()
+        # Use some decoy usernames/emails as honeypots
+        for _ in range(max(1, self.n_deadends)):
+            self.honeypots.add(self.rng.choice(DECOY_USERNAMES))
+        for _ in range(max(0, self.n_deadends - 1)):
+            self.honeypots.add(self.rng.choice(DECOY_EMAILS))
+
         # Generate logs per layer
         self.layers: List[List[Tuple[str, Dict[str, Set[str]]]]] = []
         templates = _make_log_templates()
         self._generate_layers(templates)
 
-        # All PII in the scenario (ground truth)
+        # All PII in the scenario (ground truth) — MUST exclude decoys/noise by construction
         self.all_pii: Dict[str, Set[str]] = {
-            "email": set(), "ip": set(), "username": set(), "token": set(),
+            "email": set(), "ip": set(), "username": set(), "token": set(), "phone": set(),
         }
         for name, info in self.users.items():
             self.all_pii["username"].add(name)
@@ -275,6 +456,35 @@ class Scenario:
                 self.all_pii["ip"].add(ip)
         for sid, sinfo in self.secrets.items():
             self.all_pii["token"].add(sinfo["token"])
+
+        # Phone numbers (real PII type) — generated per scenario, not decoy pool
+        self.phones: Set[str] = set()
+        n_phones = 1 if difficulty == Difficulty.EASY else (2 if difficulty == Difficulty.MEDIUM else 3)
+        
+        for _ in range(n_phones):
+            # Generate realistic-looking but unique phone numbers
+            # Mix of patterns to avoid regex-only detection
+            pattern_choice = self.rng.choice([0, 1, 2, 3])
+            digits = "".join(self.rng.choices(string.digits, k=10))
+            
+            if pattern_choice == 0:
+                # +1-XXX-XXX-XXXX
+                phone = f"+1-{digits[0:3]}-{digits[3:6]}-{digits[6:10]}"
+            elif pattern_choice == 1:
+                # +91-XXXXX-XXXXX (India pattern)
+                digits = "".join(self.rng.choices(string.digits, k=10))
+                phone = f"+91-{digits[0:5]}-{digits[5:10]}"
+            elif pattern_choice == 2:
+                # +44-20-XXXX-XXXX (UK London pattern)
+                digits = "".join(self.rng.choices(string.digits, k=8))
+                phone = f"+44-20-{digits[0:4]}-{digits[4:8]}"
+            else:
+                # +1-555-XXXX (toll-free style, but still real-able)
+                digits = "".join(self.rng.choices(string.digits, k=7))
+                phone = f"+1-555-{digits[0:4]}-{digits[4:7]}"
+            
+            self.phones.add(phone)
+        self.all_pii["phone"] |= self.phones
 
         # Flat set of all PII values
         self.all_pii_flat: Set[str] = set()
@@ -311,6 +521,10 @@ class Scenario:
             layer0.append((log, pii))
         self.layers.append(layer0)
 
+        # Inject decoy/noise logs into surface layer (not PII)
+        for noise_log, pii in _make_noise_logs(self.rng, self.n_decoys):
+            self.layers[0].append((noise_log, pii))
+
         # Deeper layers: revealed by investigation
         user_linked = templates["user_linked"]
         ip_linked = templates["ip_linked"]
@@ -346,6 +560,17 @@ class Scenario:
                     layer.append((log, pii))
 
             self.layers.append(layer)
+
+        # Inject phone PII logs into deeper layers (harder to discover without investigation)
+        if hasattr(self, "phones") and self.phones:
+            # Put them in last layer for max difficulty
+            phone_layer_idx = max(1, self.n_layers - 1)
+            for p in list(self.phones):
+                ts = _random_timestamp()
+                # natural language phone mention
+                self.layers[phone_layer_idx].append(
+                    (f"{ts} SUPPORT: Called client at {p} to verify incident report", {"phone": {p}})
+                )
 
     def get_entity_layer(self, entity: str) -> int:
         """Return which layer an entity's logs first appear in."""
@@ -566,6 +791,15 @@ class SentinelEnvironment:
 
         self.investigated_entities.add(target)
 
+        # Honeypot trap: investigating certain decoys penalizes the agent
+        if self.scenario and target in getattr(self.scenario, "honeypots", set()):
+            return Reward(
+                total_reward=-0.2,
+                penalty=-0.2,
+                feedback=f"⚠️ Honeypot triggered: '{target}' was a canary decoy. Penalty applied.",
+                metrics={"honeypot_triggered": 1},
+            ), "Honeypot triggered. Avoid investigating obvious decoys."
+
         # Find connected entities and reveal their logs
         connected = self.scenario.entity_graph.get(target, set())
         newly_visible = 0
@@ -607,6 +841,15 @@ class SentinelEnvironment:
                          and e not in self.redacted_pii]
         if investigatable:
             hint += f" Next target suggestion: {investigatable[0]}"
+
+        # If nothing new is revealed, treat as a dead-end (wasted step)
+        if newly_visible == 0 and len(newly_discovered) == 0:
+            return Reward(
+                total_reward=-0.1,
+                penalty=-0.1,
+                feedback=f"Dead-end investigation: '{target}' revealed nothing useful.",
+                metrics={"deadend": 1},
+            ), f"'{target}' was a dead-end. Prioritize other entities."
 
         return Reward(
             discovery_bonus=discovery_bonus,
@@ -650,7 +893,7 @@ class SentinelEnvironment:
         # Compute per-step reward
         total_pii = len(ground_truth)
         redaction_score = (correct / total_pii) if total_pii > 0 else 0.0
-        penalty = -0.15 * false_positives
+        penalty = -0.25 * false_positives
 
         # Check if secrets were redacted (bonus)
         secret_tokens = self.scenario.all_pii.get("token", set())
