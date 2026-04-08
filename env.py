@@ -680,7 +680,16 @@ class SentinelEnvironment:
             raise ValueError("Episode not running. Call reset() first.")
 
         self.steps_used += 1
-        reward = Reward(total_reward=MIN_SCORE)
+        
+        # Helper to ensure all values stay in valid bounds (0.0001, 0.9999)
+        def strictly_bound(val: float) -> float:
+            return max(EPSILON, min(1.0 - EPSILON, val))
+        
+        reward = Reward(
+            total_reward=strictly_bound(0.0),  # Default: EPSILON (0.0001)
+            penalty=strictly_bound(0.0),
+            feedback="",
+        )
         hint = ""
         terminated = False
         truncated = False
@@ -696,8 +705,8 @@ class SentinelEnvironment:
             terminated = True
         else:
             reward = Reward(
-                total_reward=MIN_SCORE,
-                penalty=MIN_SCORE,
+                total_reward=strictly_bound(0.0),  # BOUNDED: use EPSILON
+                penalty=strictly_bound(0.0),  # BOUNDED: use EPSILON
                 feedback="Invalid action type.",
             )
 
@@ -709,6 +718,9 @@ class SentinelEnvironment:
             # Auto-submit on truncation
             submit_reward, _ = self._handle_submit()
             reward = submit_reward
+            # Ensure all fields are bounded (defensive)
+            reward.total_reward = strictly_bound(reward.total_reward)
+            reward.penalty = strictly_bound(reward.penalty)
             self.total_reward += reward.total_reward
             hint = "⏰ Investigation budget exhausted. Auto-submitting findings."
 
@@ -757,6 +769,10 @@ class SentinelEnvironment:
 
     def _handle_scan(self) -> Tuple[Reward, str]:
         """Scan visible logs to extract PII entities."""
+        # Helper to ensure all values stay in valid bounds (0.0001, 0.9999)
+        def strictly_bound(val: float) -> float:
+            return max(EPSILON, min(1.0 - EPSILON, val))
+        
         if self.scan_performed:
             # Repeated scan — still useful if new logs revealed
             pass
@@ -786,26 +802,31 @@ class SentinelEnvironment:
             hint = "No new entities found in visible logs. Try investigating known entities."
 
         return Reward(
-            redaction_score=0.0,
-            discovery_bonus=reward_val,
-            total_reward=reward_val,
+            redaction_score=strictly_bound(0.0),  # BOUNDED: avoid 0.0
+            discovery_bonus=strictly_bound(reward_val),  # BOUNDED: avoid 0.0
+            total_reward=strictly_bound(reward_val),  # BOUNDED: avoid 0.0
+            penalty=strictly_bound(0.0),  # BOUNDED: avoid 0.0
             feedback=f"Scan complete. {n_new} new entities discovered.",
             metrics={"new_entities": n_new, "total_discovered": len(self.discovered_entities)},
         ), hint
 
     def _handle_investigate(self, target: Optional[str]) -> Tuple[Reward, str]:
         """Investigate an entity to reveal connected logs."""
+        # Helper to ensure all values stay in valid bounds (0.0001, 0.9999)
+        def strictly_bound(val: float) -> float:
+            return max(EPSILON, min(1.0 - EPSILON, val))
+        
         if not target:
             return Reward(
-                total_reward=MIN_SCORE,
-                penalty=MIN_SCORE,
+                total_reward=strictly_bound(0.0),  # BOUNDED: use EPSILON
+                penalty=strictly_bound(0.0),  # BOUNDED: use EPSILON
                 feedback="INVESTIGATE requires a target_entity.",
             ), "Please provide a target_entity to investigate."
 
         if target in self.investigated_entities:
             return Reward(
-                total_reward=MIN_SCORE,
-                penalty=MIN_SCORE,
+                total_reward=strictly_bound(0.0),  # BOUNDED: use EPSILON
+                penalty=strictly_bound(0.0),  # BOUNDED: use EPSILON
                 feedback=f"Already investigated '{target}'. Try a different entity.",
             ), f"'{target}' was already investigated. Choose another entity."
 
@@ -814,8 +835,8 @@ class SentinelEnvironment:
         # Honeypot trap: investigating certain decoys penalizes the agent
         if self.scenario and target in getattr(self.scenario, "honeypots", set()):
             return Reward(
-                total_reward=MIN_SCORE,
-                penalty=MIN_SCORE,
+                total_reward=strictly_bound(0.0),  # BOUNDED: use EPSILON
+                penalty=strictly_bound(0.0),  # BOUNDED: use EPSILON
                 feedback=f"⚠️ Honeypot triggered: '{target}' was a canary decoy. Penalty applied.",
                 metrics={"honeypot_triggered": 1},
             ), "Honeypot triggered. Avoid investigating obvious decoys."
@@ -865,15 +886,18 @@ class SentinelEnvironment:
         # If nothing new is revealed, treat as a dead-end (wasted step)
         if newly_visible == 0 and len(newly_discovered) == 0:
             return Reward(
-                total_reward=MIN_SCORE,
-                penalty=MIN_SCORE,
+                total_reward=strictly_bound(0.0),  # BOUNDED: use EPSILON
+                penalty=strictly_bound(0.0),  # BOUNDED: use EPSILON
                 feedback=f"Dead-end investigation: '{target}' revealed nothing useful.",
                 metrics={"deadend": 1},
             ), f"'{target}' was a dead-end. Prioritize other entities."
 
         return Reward(
-            discovery_bonus=discovery_bonus,
-            total_reward=discovery_bonus,
+            redaction_score=strictly_bound(0.0),  # BOUNDED: avoid 0.0
+            discovery_bonus=strictly_bound(discovery_bonus),  # BOUNDED: avoid 0.0
+            efficiency_bonus=strictly_bound(0.0),  # BOUNDED: avoid 0.0
+            penalty=strictly_bound(0.0),  # BOUNDED: avoid 0.0
+            total_reward=strictly_bound(discovery_bonus),  # BOUNDED: avoid 0.0
             feedback=f"Investigated '{target}'. Found {len(newly_discovered)} new entities, {newly_visible} new logs.",
             metrics={
                 "new_logs_revealed": newly_visible,
@@ -884,10 +908,14 @@ class SentinelEnvironment:
 
     def _handle_redact(self, redactions: List[Dict[str, str]]) -> Tuple[Reward, str]:
         """Submit PII items for redaction and scoring."""
+        # Helper to ensure all values stay in valid bounds (0.0001, 0.9999)
+        def strictly_bound(val: float) -> float:
+            return max(EPSILON, min(1.0 - EPSILON, val))
+        
         if not redactions:
             return Reward(
-                total_reward=MIN_SCORE,
-                penalty=MIN_SCORE,
+                total_reward=strictly_bound(0.0),  # BOUNDED: use EPSILON
+                penalty=strictly_bound(0.0),  # BOUNDED: use EPSILON
                 feedback="No redactions provided.",
             ), "Please provide redactions: [{'original': '...', 'type': 'email|ip|username|token'}]"
 
@@ -910,43 +938,56 @@ class SentinelEnvironment:
             else:
                 false_positives += 1
 
+        # Helper to ensure all values stay in valid bounds (0.0001, 0.9999)
+        def strictly_bound(val: float) -> float:
+            return max(EPSILON, min(1.0 - EPSILON, val))
+
         # Compute per-step reward
         total_pii = len(ground_truth)
-        redaction_score = (correct / total_pii) if total_pii > 0 else 0.0
-        # Cap penalty to prevent unbounded negative rewards (normalize for RL algorithms)
-        penalty = -0.25 * min(false_positives, 4)  # Max penalty -1.0 for 4+ false positives
+        redaction_score = (correct / total_pii) if total_pii > 0 else EPSILON  # Use EPSILON as default, not 0.0
+        
+        # Raw negative penalty (for semantic tracking only, not returned as score)
+        raw_penalty = -0.25 * min(false_positives, 4)  # Max penalty -1.0 for 4+ false positives
+        
+        # Convert penalty to bounded (0, 1) penalty factor
+        # false_positives=0 → penalty_factor=MAX_SCORE (no penalty)
+        # false_positives≥4 → penalty_factor=EPSILON (maximum penalty)
+        penalty_factor = strictly_bound(1.0 - EPSILON - (0.25 * min(false_positives, 4)))
 
         # Check if secrets were redacted (bonus)
         secret_tokens = self.scenario.all_pii.get("token", set())
         secrets_redacted = set(newly_redacted) & secret_tokens
-        secret_bonus = 0.2 * len(secrets_redacted)
+        secret_bonus = 0.2 * len(secrets_redacted) if secrets_redacted else EPSILON  # Avoid 0.0
 
-        total_reward = max(-1.0, min(1.0, redaction_score + penalty + secret_bonus))
+        # Calculate raw total, then strictly bound
+        raw_total = redaction_score + raw_penalty + secret_bonus
+        total_reward = strictly_bound(raw_total)
 
-        # Coverage so far
-        coverage = len(self.redacted_pii) / total_pii if total_pii > 0 else 0.0
+        # Coverage so far — BOUNDED to avoid 0.0 and 1.0
+        coverage_raw = len(self.redacted_pii) / total_pii if total_pii > 0 else 0.0
+        coverage = strictly_bound(coverage_raw)
 
         hint = f"Redacted {correct} items correctly."
         if false_positives:
             hint += f" ⚠️ {false_positives} false positives (penalty applied)."
-        hint += f" Coverage: {len(self.redacted_pii)}/{total_pii} ({coverage:.0%})"
+        hint += f" Coverage: {len(self.redacted_pii)}/{total_pii} ({coverage_raw:.0%})"
 
         remaining = ground_truth - self.redacted_pii
         if not remaining:
             hint += " 🎉 All PII found! Consider submitting."
 
         return Reward(
-            redaction_score=redaction_score,
-            penalty=penalty,
-            discovery_bonus=secret_bonus,
-            total_reward=total_reward,
+            redaction_score=strictly_bound(redaction_score),  # BOUNDED: avoid 0.0
+            penalty=penalty_factor,  # Bounded (0,1) penalty factor - NO negative values
+            discovery_bonus=strictly_bound(secret_bonus),  # BOUNDED: avoid 0.0
+            total_reward=total_reward,  # Already bounded
             feedback=f"{correct} correct, {false_positives} false positives, {already_redacted} duplicates.",
             metrics={
-                "correct": correct,
-                "false_positives": false_positives,
-                "coverage": coverage,
-                "items_redacted_total": len(self.redacted_pii),
-                "items_remaining": len(remaining),
+                "correct": correct,  # Count, not a score
+                "false_positives": false_positives,  # Count, not a score
+                "coverage": coverage,  # BOUNDED: avoid 0.0 or 1.0
+                "items_redacted_total": len(self.redacted_pii),  # Count, not a score
+                "items_remaining": len(remaining),  # Count, not a score
             },
         ), hint
 
