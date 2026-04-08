@@ -10,7 +10,7 @@ from env import SentinelEnvironment, EPSILON, MAX_SCORE
 from models import AgentAction, ActionType, Difficulty
 from grader import InvestigationGrader
 
-EPSILON_VAL = 0.05
+EPSILON_VAL = 0.01
 MIN_ALLOWED = EPSILON_VAL
 MAX_ALLOWED = 1.0 - EPSILON_VAL
 

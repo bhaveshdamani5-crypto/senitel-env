@@ -17,10 +17,13 @@ Scoring components:
 from typing import Dict, Set, List, Tuple, Any
 
 # Epsilon bounds: scores must be strictly between 0 and 1 (not exactly 0.0 or 1.0)
-# Using 0.05 as the boundary to ensure strict bounds with safety margin
-EPSILON = 0.05
+# Using 0.01 as the boundary for wider safety margin to avoid boundary rejection
+EPSILON = 0.01
 MIN_SCORE = EPSILON
 MAX_SCORE = 1.0 - EPSILON
+
+# Neutral score for empty scenarios (avoids using boundary values as sentinels)
+NEUTRAL_SCORE = 0.5
 
 
 class InvestigationGrader:
@@ -50,16 +53,17 @@ class InvestigationGrader:
         total_pii = len(ground_truth)
         
         # ====== EDGE CASE: Empty ground truth ======
-        # No work to grade → return minimal (failure) scores
+        # No work to grade → return neutral bounded scores (avoid boundary sentinels)
+        neutral_clamped = max(MIN_SCORE, min(MAX_SCORE, NEUTRAL_SCORE))
         if total_pii == 0:
             return {
-                # Score fields - all return minimal bounded scores
-                "precision": MIN_SCORE,
-                "recall": MIN_SCORE,
-                "f1_score": MIN_SCORE,
-                "discovery_rate": MIN_SCORE,
-                "efficiency": MIN_SCORE,
-                "total_score": MIN_SCORE,
+                # Score fields - all return neutral bounded scores
+                "precision": neutral_clamped,
+                "recall": neutral_clamped,
+                "f1_score": neutral_clamped,
+                "discovery_rate": neutral_clamped,
+                "efficiency": neutral_clamped,
+                "total_score": neutral_clamped,
                 
                 # Non-score fields (counts and metadata)
                 "discovered_count": 0,
@@ -74,11 +78,11 @@ class InvestigationGrader:
                 "false_negatives": 0,
                 "total_pii": 0,
                 
-                # Component scores - all minimal
-                "f1_component": MIN_SCORE,
-                "discovery_component": MIN_SCORE,
-                "recall_component": MIN_SCORE,
-                "efficiency_bonus": MIN_SCORE,
+                # Component scores - all neutral
+                "f1_component": neutral_clamped,
+                "discovery_component": neutral_clamped,
+                "recall_component": neutral_clamped,
+                "efficiency_bonus": neutral_clamped,
                 
                 # Metadata
                 "grade": "F",
