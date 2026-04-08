@@ -70,13 +70,13 @@ Unlike simplistic PII redaction tools, Sentinel-Log-Shield is a **learned challe
 
 ### **Performance by Strategy**
 
-| Agent Strategy | Avg Score | Discovery | Precision | Why It Fails |
-|---|---|---|---|---|
-| **Random** | 0.18 | 22% | 41% | No strategy; wastes actions |
-| **Scan once** | 0.28 | 35% | 58% | Doesn't investigate; misses hidden PII |
-| **Greedy redact-all** | 0.32 | 42% | 38% | High recall, low precision; false positives |
-| **Single investigation** | 0.45 | 58% | 72% | Shallow exploration; misses deep secrets |
-| **Intelligent agent** | 0.63+ | 78% | 82% | Balances all objectives strategically |
+| Agent Strategy           | Avg Score | Discovery | Precision | Why It Fails                                |
+| ------------------------ | --------- | --------- | --------- | ------------------------------------------- |
+| **Random**               | 0.18      | 22%       | 41%       | No strategy; wastes actions                 |
+| **Scan once**            | 0.28      | 35%       | 58%       | Doesn't investigate; misses hidden PII      |
+| **Greedy redact-all**    | 0.32      | 42%       | 38%       | High recall, low precision; false positives |
+| **Single investigation** | 0.45      | 58%       | 72%       | Shallow exploration; misses deep secrets    |
+| **Intelligent agent**    | 0.63+     | 78%       | 82%       | Balances all objectives strategically       |
 
 ### **What Makes It Hard**
 
@@ -91,7 +91,7 @@ Unlike simplistic PII redaction tools, Sentinel-Log-Shield is a **learned challe
 ✅ **Strategic planning:** Which entities to investigate first?  
 ✅ **Risk assessment:** Can I afford to miss this secret?  
 ✅ **Budget allocation:** Explore deep or redact broad?  
-✅ **Context understanding:** Which PII is critical vs. superficial?  
+✅ **Context understanding:** Which PII is critical vs. superficial?
 
 ---
 
@@ -223,7 +223,7 @@ total_score = (
 ✅ **OpenEnv:** Full spec compliance, clean interface, reproducible with seeds  
 ✅ **Task Design:** Non-trivial learning challenge, procedurally unique, difficulty-scaled  
 ✅ **Grading:** Deterministic, multi-objective, prevents gaming, mathematically sound  
-✅ **Code Quality:** Modular, type-safe, well-tested, production-ready  
+✅ **Code Quality:** Modular, type-safe, well-tested, production-ready
 
 ---
 
