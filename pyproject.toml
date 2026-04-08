@@ -31,5 +31,8 @@ dev = [
     "pytest-cov>=4.0.0",
 ]
 
+[project.scripts]
+server = "uvicorn.main:run"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
