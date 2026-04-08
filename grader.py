@@ -15,6 +15,11 @@ Scoring components:
 
 from typing import Dict, Set, List, Tuple, Any
 
+# Epsilon bounds: scores must be strictly between 0 and 1 (not exactly 0.0 or 1.0)
+EPSILON = 0.0001
+MIN_SCORE = EPSILON
+MAX_SCORE = 1.0 - EPSILON
+
 
 class InvestigationGrader:
     """Evaluates the agent's investigation and redaction performance."""
@@ -79,7 +84,7 @@ class InvestigationGrader:
         efficiency_bonus = efficiency * 0.05
         secret_penalty = -0.30 * secrets_missed
 
-        total_score = max(0.0, min(1.0,
+        total_score = max(MIN_SCORE, min(MAX_SCORE,
             f1_component + discovery_component + recall_component + efficiency_bonus + secret_penalty
         ))
 
