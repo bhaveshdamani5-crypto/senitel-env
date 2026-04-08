@@ -127,45 +127,45 @@ def _make_noise_logs(rng: random.Random, n: int) -> List[Tuple[str, Dict[str, Se
     
     templates = [
         lambda: (
-            f"{_random_timestamp()} DOCS: Example contact {rng.choice(DECOY_EMAILS)} for integration testing",
+            f"{_random_timestamp(rng)} DOCS: Example contact {rng.choice(DECOY_EMAILS)} for integration testing",
             {},  # decoy only
         ),
         lambda: (
-            f"{_random_timestamp()} DOCS: Set bind_address={rng.choice(DECOY_IPS)} (example value)",
+            f"{_random_timestamp(rng)} DOCS: Set bind_address={rng.choice(DECOY_IPS)} (example value)",
             {},
         ),
         lambda: (
-            f"{_random_timestamp()} README: Use user='{rng.choice(DECOY_USERNAMES)}' in local dev (not real user)",
+            f"{_random_timestamp(rng)} README: Use user='{rng.choice(DECOY_USERNAMES)}' in local dev (not real user)",
             {},
         ),
         lambda: (
-            f"{_random_timestamp()} PLAYBOOK: Call test line {rng.choice(DECOY_PHONE_NUMBERS)} for staging verification",
+            f"{_random_timestamp(rng)} PLAYBOOK: Call test line {rng.choice(DECOY_PHONE_NUMBERS)} for staging verification",
             {},
         ),
         # Hard mode: obfuscated tokens that look real
         lambda: (
-            f"{_random_timestamp()} CONFIG: Test API key {gen_decoy_token()} (development credential)",
+            f"{_random_timestamp(rng)} CONFIG: Test API key {gen_decoy_token()} (development credential)",
             {},
         ),
         # Hard mode: base64-encoded decoy secrets
         lambda: (
             b64_secret := base64.b64encode(b"mock_secret=abcd1234").decode(),
-            f"{_random_timestamp()} LOG: Cached value b64={b64_secret} (mock data, purge after test)",
+            f"{_random_timestamp(rng)} LOG: Cached value b64={b64_secret} (mock data, purge after test)",
             {},
         ),
         # Hard mode: context-dependent IPs (config, not breach-related)
         lambda: (
-            f"{_random_timestamp()} CONFIG: DNS servers [8.8.8.8, 8.8.4.4] (public, not sensitive)",
+            f"{_random_timestamp(rng)} CONFIG: DNS servers [8.8.8.8, 8.8.4.4] (public, not sensitive)",
             {},
         ),
         # Hard mode: realistic-looking but fake phone patterns
         lambda: (
-            f"{_random_timestamp()} DOCS: Support hotline {gen_decoy_phone()} (test number)",
+            f"{_random_timestamp(rng)} DOCS: Support hotline {gen_decoy_phone()} (test number)",
             {},
         ),
         # Hard mode: natural language false positives
         lambda: (
-            f"{_random_timestamp()} NOTES: Email admin or root for permission issues (not real users)",
+            f"{_random_timestamp(rng)} NOTES: Email admin or root for permission issues (not real users)",
             {},
         ),
     ]
@@ -208,40 +208,46 @@ TOKEN_PREFIXES = {
 }
 
 
-def _random_ip() -> str:
+def _random_ip(rng: random.Random = None) -> str:
     """Generate a realistic-looking internal/external IP."""
+    if rng is None:
+        rng = random
     prefixes = [
-        (10, random.randint(0, 255), random.randint(0, 255)),
-        (172, random.randint(16, 31), random.randint(0, 255)),
-        (192, 168, random.randint(0, 255)),
+        (10, rng.randint(0, 255), rng.randint(0, 255)),
+        (172, rng.randint(16, 31), rng.randint(0, 255)),
+        (192, 168, rng.randint(0, 255)),
         (203, 0, 113),  # TEST-NET-3
     ]
-    prefix = random.choice(prefixes)
-    return f"{prefix[0]}.{prefix[1]}.{prefix[2]}.{random.randint(1, 254)}"
+    prefix = rng.choice(prefixes)
+    return f"{prefix[0]}.{prefix[1]}.{prefix[2]}.{rng.randint(1, 254)}"
 
 
-def _random_token(token_type: str) -> str:
+def _random_token(token_type: str, rng: random.Random = None) -> str:
     """Generate a realistic-looking secret token."""
+    if rng is None:
+        rng = random
     prefix = TOKEN_PREFIXES.get(token_type, "tok_")
     charset = string.ascii_letters + string.digits
     if token_type == "aws_access":
         # AWS access keys are 20 uppercase alphanumeric chars
-        return prefix + "".join(random.choices(string.ascii_uppercase + string.digits, k=16))
+        return prefix + "".join(rng.choices(string.ascii_uppercase + string.digits, k=16))
     elif token_type == "stripe":
-        return prefix + "".join(random.choices(charset, k=24))
+        return prefix + "".join(rng.choices(charset, k=24))
     elif token_type in ("github", "huggingface"):
-        return prefix + "".join(random.choices(charset, k=30))
+        return prefix + "".join(rng.choices(charset, k=30))
     elif token_type == "jwt":
-        return prefix + "".join(random.choices(charset, k=40))
+        return prefix + "".join(rng.choices(charset, k=40))
     else:
-        return prefix + "".join(random.choices(charset, k=20))
+        return prefix + "".join(rng.choices(charset, k=20))
 
 
-def _random_timestamp() -> str:
-    """Generate a realistic timestamp."""
-    h = random.randint(0, 23)
-    m = random.randint(0, 59)
-    s = random.randint(0, 59)
+def _random_timestamp(rng: random.Random = None) -> str:
+    """Generate a realistic timestamp (use passed RNG for determinism)."""
+    if rng is None:
+        rng = random
+    h = rng.randint(0, 23)
+    m = rng.randint(0, 59)
+    s = rng.randint(0, 59)
     return f"2026-04-07 {h:02d}:{m:02d}:{s:02d}"
 
 
@@ -252,8 +258,11 @@ def _random_timestamp() -> str:
 # Each template returns (log_string, set_of_pii_in_this_log)
 # Templates are organized by what PII they reveal
 
-def _make_log_templates():
+def _make_log_templates(rng: random.Random = None):
     """Returns a dict of template functions keyed by PII types they reveal."""
+    if rng is None:
+        rng = random
+    
     templates = {
         # Surface-level templates (Layer 0 — visible on reset)
         "surface": [
@@ -303,7 +312,7 @@ def _make_log_templates():
                 {"email": {e}, "ip": {ip}},
             ),
             lambda u, e, ip, ts, svc: (
-                f"{ts} DB: User '{u}' queried {random.choice(TABLES)} (rows: {random.randint(1, 500)})",
+                f"{ts} DB: User '{u}' queried {rng.choice(TABLES)} (rows: {rng.randint(1, 500)})",
                 {"username": {u}},
             ),
             lambda u, e, ip, ts, svc: (
@@ -322,11 +331,11 @@ def _make_log_templates():
                 {"token": {tok}},
             ),
             lambda u, tok, ts, svc, tok_type: (
-                f"{ts} ERROR: Auth failed with credential {tok} in {svc} module (line {random.randint(20, 200)})",
+                f"{ts} ERROR: Auth failed with credential {tok} in {svc} module (line {rng.randint(20, 200)})",
                 {"token": {tok}},
             ),
             lambda u, tok, ts, svc, tok_type: (
-                f"{ts} TRACE: Stack dump includes secret {tok} at {svc}:L{random.randint(10, 300)}",
+                f"{ts} TRACE: Stack dump includes secret {tok} at {svc}:L{rng.randint(10, 300)}",
                 {"token": {tok}},
             ),
             # Obfuscated secrets: partially masked but still should be redacted by capable agents
@@ -343,7 +352,7 @@ def _make_log_templates():
         # IP-linked templates (revealed when investigating an IP)
         "ip_linked": [
             lambda u, e, ip, ts, svc: (
-                f"{ts} NETWORK: {ip} established {random.randint(1, 50)} connections to {svc}",
+                f"{ts} NETWORK: {ip} established {rng.randint(1, 50)} connections to {svc}",
                 {"ip": {ip}},
             ),
             lambda u, e, ip, ts, svc: (
@@ -384,7 +393,7 @@ class Scenario:
         self.users = {
             name: {
                 "email": f"{name}.{self.rng.choice(['dev','ops','sec'])}@{self.rng.choice(DOMAINS)}",
-                "ips": [_random_ip() for _ in range(self.rng.randint(1, 2))],
+                "ips": [_random_ip(self.rng) for _ in range(self.rng.randint(1, 2))],
                 "services": self.rng.sample(SERVICES, self.rng.randint(1, 3)),
             }
             for name in names
@@ -396,7 +405,7 @@ class Scenario:
         for i, tok_type in enumerate(token_types):
             owner = self.rng.choice(names)
             self.secrets[f"secret_{i}"] = {
-                "token": _random_token(tok_type),
+                "token": _random_token(tok_type, self.rng),
                 "type": tok_type,
                 "owner": owner,
                 "service": self.rng.choice(self.users[owner]["services"]),
@@ -502,12 +511,13 @@ class Scenario:
 
     def _generate_layers(self, templates):
         """Generate log entries for each investigation layer."""
+        templates = _make_log_templates(self.rng)
         # Layer 0: Surface logs (visible on reset)
         layer0 = []
         surface_tmpls = templates["surface"]
         for name in list(self.users.keys())[:2]:  # Show first 2 users in surface
             info = self.users[name]
-            ts = _random_timestamp()
+            ts = _random_timestamp(self.rng)
             tmpl = self.rng.choice(surface_tmpls)
             log, pii = tmpl(name, info["email"], self.rng.choice(info["ips"]), ts)
             layer0.append((log, pii))
@@ -515,7 +525,7 @@ class Scenario:
         for _ in range(self.rng.randint(1, 2)):
             name = self.rng.choice(list(self.users.keys()))
             info = self.users[name]
-            ts = _random_timestamp()
+            ts = _random_timestamp(self.rng)
             tmpl = self.rng.choice(surface_tmpls)
             log, pii = tmpl(name, info["email"], self.rng.choice(info["ips"]), ts)
             layer0.append((log, pii))
@@ -533,7 +543,7 @@ class Scenario:
         for layer_idx in range(1, self.n_layers):
             layer = []
             for name, info in self.users.items():
-                ts = _random_timestamp()
+                ts = _random_timestamp(self.rng)
                 svc = self.rng.choice(info["services"])
 
                 # User-linked logs
@@ -551,7 +561,7 @@ class Scenario:
             # Token-linked logs appear in deeper layers
             if layer_idx >= self.n_layers - 2:
                 for sid, sinfo in self.secrets.items():
-                    ts = _random_timestamp()
+                    ts = _random_timestamp(self.rng)
                     tmpl = self.rng.choice(token_linked)
                     log, pii = tmpl(
                         sinfo["owner"], sinfo["token"], ts,
@@ -566,7 +576,7 @@ class Scenario:
             # Put them in last layer for max difficulty
             phone_layer_idx = max(1, self.n_layers - 1)
             for p in list(self.phones):
-                ts = _random_timestamp()
+                ts = _random_timestamp(self.rng)
                 # natural language phone mention
                 self.layers[phone_layer_idx].append(
                     (f"{ts} SUPPORT: Called client at {p} to verify incident report", {"phone": {p}})
@@ -893,14 +903,15 @@ class SentinelEnvironment:
         # Compute per-step reward
         total_pii = len(ground_truth)
         redaction_score = (correct / total_pii) if total_pii > 0 else 0.0
-        penalty = -0.25 * false_positives
+        # Cap penalty to prevent unbounded negative rewards (normalize for RL algorithms)
+        penalty = -0.25 * min(false_positives, 4)  # Max penalty -1.0 for 4+ false positives
 
         # Check if secrets were redacted (bonus)
         secret_tokens = self.scenario.all_pii.get("token", set())
         secrets_redacted = set(newly_redacted) & secret_tokens
         secret_bonus = 0.2 * len(secrets_redacted)
 
-        total_reward = redaction_score + penalty + secret_bonus
+        total_reward = max(-1.0, min(1.0, redaction_score + penalty + secret_bonus))
 
         # Coverage so far
         coverage = len(self.redacted_pii) / total_pii if total_pii > 0 else 0.0
@@ -952,17 +963,17 @@ class SentinelEnvironment:
         steps_saved = max(0, budget - self.steps_used)
         efficiency_bonus = 0.05 * steps_saved
 
-        # Secret penalty: critical secrets missed
+        # Secret penalty: critical secrets missed (capped to prevent unbounded penalties)
         secret_tokens = self.scenario.all_pii.get("token", set())
         missed_secrets = secret_tokens - self.redacted_pii
-        secret_penalty = -0.3 * len(missed_secrets)
+        secret_penalty = -0.3 * min(len(missed_secrets), 3)  # Max penalty -0.9 for 3+ missed secrets
 
-        # Final score composition
+        # Final score composition (normalized to [-1.0, +1.0])
         base_score = f1 * 0.7  # F1 is 70% of score
         discovery_component = discovery_rate * 0.2  # Discovery is 20%
         completeness = recall * 0.1  # Raw recall is 10%
 
-        total_reward = base_score + discovery_component + completeness + efficiency_bonus + secret_penalty
+        total_reward = max(-1.0, min(1.0, base_score + discovery_component + completeness + efficiency_bonus + secret_penalty))
 
         hint = f"📊 Final Score: {total_reward:.3f} | F1: {f1:.3f} | Discovery: {discovery_rate:.0%} | "
         hint += f"Redacted: {true_positives}/{total_pii}"

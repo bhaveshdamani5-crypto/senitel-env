@@ -221,110 +221,135 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
       3. SCAN again after investigation reveals new logs
       4. REDACT all discovered PII
       5. SUBMIT
+    
+    Gracefully handles API errors and returns fallback result.
     """
-    env = SentinelEnvironment()
-    reset_result = env.reset(difficulty=difficulty, seed=seed)
-    obs = reset_result.observation
+    try:
+        env = SentinelEnvironment()
+        reset_result = env.reset(difficulty=difficulty, seed=seed)
+        obs = reset_result.observation
 
-    print(f"[START] difficulty={difficulty} budget={obs.steps_remaining} "
-          f"total_pii={obs.total_pii_to_find} env=sentinel-log-shield model={MODEL_NAME}")
+        print(f"[START] difficulty={difficulty} budget={obs.steps_remaining} "
+              f"total_pii={obs.total_pii_to_find} env=sentinel-log-shield model={MODEL_NAME}")
 
-    all_found_pii: List[Dict[str, str]] = []
-    investigated: Set[str] = set()
-    episode_rewards = []
+        all_found_pii: List[Dict[str, str]] = []
+        investigated: Set[str] = set()
+        episode_rewards = []
 
-    step_num = 0
-    result = None
+        step_num = 0
+        result = None
 
-    # Always start with SCAN
-    step_num += 1
-    result = env.step(AgentAction(action_type=ActionType.SCAN))
-    obs = result.observation
-    episode_rewards.append(result.reward.total_reward)
-    print(f"[STEP] step={step_num} action=SCAN discovered={len(obs.discovered_entities)} reward={result.reward.total_reward:.3f} done=false")
+        # Always start with SCAN
+        step_num += 1
+        result = env.step(AgentAction(action_type=ActionType.SCAN))
+        obs = result.observation
+        episode_rewards.append(result.reward.total_reward)
+        print(f"[STEP] step={step_num} action=SCAN discovered={len(obs.discovered_entities)} reward={result.reward.total_reward:.3f} done=false")
 
-    while obs.steps_remaining > 0 and not (result.terminated or result.truncated):
-        if obs.steps_remaining <= 1:
-            step_num += 1
-            result = env.step(AgentAction(action_type=ActionType.SUBMIT))
-            obs = result.observation
-            episode_rewards.append(result.reward.total_reward)
-            print(f"[STEP] step={step_num} action=SUBMIT reward={result.reward.total_reward:.3f} done=true")
-            break
+        while obs.steps_remaining > 0 and not (result.terminated or result.truncated):
+            if obs.steps_remaining <= 1:
+                step_num += 1
+                result = env.step(AgentAction(action_type=ActionType.SUBMIT))
+                obs = result.observation
+                episode_rewards.append(result.reward.total_reward)
+                print(f"[STEP] step={step_num} action=SUBMIT reward={result.reward.total_reward:.3f} done=true")
+                break
 
-        all_found_pii = [{"original": e, "type": _classify_entity(e)} for e in obs.discovered_entities]
-        summary = (
-            f"Visible logs: {len(obs.visible_logs)}\n"
-            f"Discovered: {obs.discovered_entities}\n"
-            f"Targets: {obs.investigation_targets}\n"
-            f"Steps remaining: {obs.steps_remaining}\n"
-            f"Coverage so far: {obs.pii_found_count}/{obs.total_pii_to_find}\n"
-        )
-        decision = _llm_choose_action(summary)
-        act = decision["action"]
+            all_found_pii = [{"original": e, "type": _classify_entity(e)} for e in obs.discovered_entities]
+            summary = (
+                f"Visible logs: {len(obs.visible_logs)}\n"
+                f"Discovered: {obs.discovered_entities}\n"
+                f"Targets: {obs.investigation_targets}\n"
+                f"Steps remaining: {obs.steps_remaining}\n"
+                f"Coverage so far: {obs.pii_found_count}/{obs.total_pii_to_find}\n"
+            )
+            
+            try:
+                decision = _llm_choose_action(summary)
+                act = decision["action"]
+            except Exception as e:
+                print(f"[WARN] LLM error (will attempt SCAN instead): {e}")
+                act = "scan"  # Fallback to SCAN on LLM failure
 
-        if act == "scan":
-            step_num += 1
-            result = env.step(AgentAction(action_type=ActionType.SCAN))
-            obs = result.observation
-            episode_rewards.append(result.reward.total_reward)
-            print(f"[STEP] step={step_num} action=SCAN reward={result.reward.total_reward:.3f} done=false")
-            continue
-
-        if act == "investigate":
-            target = decision.get("target")
-            if not target or target not in obs.investigation_targets or target in investigated:
-                # If invalid/repeated target, fall back to SCAN (still LLM-only; we don't pick a target heuristically)
+            if act == "scan":
                 step_num += 1
                 result = env.step(AgentAction(action_type=ActionType.SCAN))
                 obs = result.observation
                 episode_rewards.append(result.reward.total_reward)
-                print(f"[STEP] step={step_num} action=SCAN(invalid_target) reward={result.reward.total_reward:.3f} done=false")
+                print(f"[STEP] step={step_num} action=SCAN reward={result.reward.total_reward:.3f} done=false")
                 continue
-            investigated.add(target)
-            step_num += 1
-            result = env.step(AgentAction(action_type=ActionType.INVESTIGATE, target_entity=target))
-            obs = result.observation
-            episode_rewards.append(result.reward.total_reward)
-            print(f"[STEP] step={step_num} action=INVESTIGATE({target}) reward={result.reward.total_reward:.3f} done=false")
-            continue
 
-        if act == "redact":
-            step_num += 1
-            result = env.step(AgentAction(action_type=ActionType.REDACT, redactions=all_found_pii))
-            obs = result.observation
-            episode_rewards.append(result.reward.total_reward)
-            print(f"[STEP] step={step_num} action=REDACT({len(all_found_pii)}_items) reward={result.reward.total_reward:.3f} done=false")
-            continue
+            if act == "investigate":
+                target = decision.get("target")
+                if not target or target not in obs.investigation_targets or target in investigated:
+                    # If invalid/repeated target, fall back to SCAN (still LLM-only; we don't pick a target heuristically)
+                    step_num += 1
+                    result = env.step(AgentAction(action_type=ActionType.SCAN))
+                    obs = result.observation
+                    episode_rewards.append(result.reward.total_reward)
+                    print(f"[STEP] step={step_num} action=SCAN(invalid_target) reward={result.reward.total_reward:.3f} done=false")
+                    continue
+                investigated.add(target)
+                step_num += 1
+                result = env.step(AgentAction(action_type=ActionType.INVESTIGATE, target_entity=target))
+                obs = result.observation
+                episode_rewards.append(result.reward.total_reward)
+                print(f"[STEP] step={step_num} action=INVESTIGATE({target}) reward={result.reward.total_reward:.3f} done=false")
+                continue
 
-        if act == "submit":
-            step_num += 1
-            result = env.step(AgentAction(action_type=ActionType.SUBMIT))
-            obs = result.observation
-            episode_rewards.append(result.reward.total_reward)
-            print(f"[STEP] step={step_num} action=SUBMIT reward={result.reward.total_reward:.3f} done=true")
-            break
+            if act == "redact":
+                step_num += 1
+                result = env.step(AgentAction(action_type=ActionType.REDACT, redactions=all_found_pii))
+                obs = result.observation
+                episode_rewards.append(result.reward.total_reward)
+                print(f"[STEP] step={step_num} action=REDACT({len(all_found_pii)}_items) reward={result.reward.total_reward:.3f} done=false")
+                continue
 
-    # Final output
-    total_score = sum(episode_rewards)
-    success = result.reward.metrics.get("f1_score", 0) >= 0.70 if result.reward.metrics else False
-    rewards_str = ",".join(f"{r:.3f}" for r in episode_rewards)
+            if act == "submit":
+                step_num += 1
+                result = env.step(AgentAction(action_type=ActionType.SUBMIT))
+                obs = result.observation
+                episode_rewards.append(result.reward.total_reward)
+                print(f"[STEP] step={step_num} action=SUBMIT reward={result.reward.total_reward:.3f} done=true")
+                break
 
-    print(f"[END] success={'true' if success else 'false'} steps={step_num} "
-          f"score={total_score:.3f} f1={result.reward.metrics.get('f1_score', 0):.3f} "
-          f"discovery={result.reward.metrics.get('discovery_rate', 0):.3f} "
-          f"rewards={rewards_str}")
+        # Final output
+        total_score = sum(episode_rewards)
+        success = result.reward.metrics.get("f1_score", 0) >= 0.70 if result.reward.metrics else False
+        rewards_str = ",".join(f"{r:.3f}" for r in episode_rewards)
 
-    return {
-        "difficulty": difficulty,
-        "steps": step_num,
-        "total_score": total_score,
-        "f1_score": result.reward.metrics.get("f1_score", 0),
-        "discovery_rate": result.reward.metrics.get("discovery_rate", 0),
-        "success": success,
-        "rewards": episode_rewards,
-        "metrics": result.reward.metrics,
-    }
+        print(f"[END] success={'true' if success else 'false'} steps={step_num} "
+              f"score={total_score:.3f} f1={result.reward.metrics.get('f1_score', 0):.3f} "
+              f"discovery={result.reward.metrics.get('discovery_rate', 0):.3f} "
+              f"rewards={rewards_str}")
+
+        return {
+            "difficulty": difficulty,
+            "steps": step_num,
+            "total_score": total_score,
+            "f1_score": result.reward.metrics.get("f1_score", 0),
+            "discovery_rate": result.reward.metrics.get("discovery_rate", 0),
+            "success": success,
+            "rewards": episode_rewards,
+            "metrics": result.reward.metrics,
+        }
+    
+    except Exception as e:
+        print(f"[ERROR] Episode crashed: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        # Return a default failed result so benchmarking can continue
+        return {
+            "difficulty": difficulty,
+            "steps": 0,
+            "total_score": 0.0,
+            "f1_score": 0.0,
+            "discovery_rate": 0.0,
+            "success": False,
+            "rewards": [],
+            "metrics": {},
+            "error": str(e),
+        }
 
 
 # ============================================================================
@@ -333,54 +358,82 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
 
 def main():
     """Run investigation episodes across all difficulty levels."""
-    parser = argparse.ArgumentParser(description="Sentinel-Log-Shield baseline (LLM-only).")
-    parser.add_argument("--seeds", type=int, default=1, help="Number of seeds per difficulty for benchmarking.")
-    parser.add_argument("--seed-start", type=int, default=0, help="Starting seed (inclusive).")
-    args = parser.parse_args()
+    try:
+        parser = argparse.ArgumentParser(description="Sentinel-Log-Shield baseline (LLM-only).")
+        parser.add_argument("--seeds", type=int, default=1, help="Number of seeds per difficulty for benchmarking.")
+        parser.add_argument("--seed-start", type=int, default=0, help="Starting seed (inclusive).")
+        args = parser.parse_args()
 
-    print("=" * 70)
-    print("Sentinel-Log-Shield v2: Interactive Investigation Agent")
-    print("=" * 70)
-    print(f"Model: {MODEL_NAME}")
-    print(f"API Base: {API_BASE_URL}")
-    print("LLM Mode: True")
-    print("=" * 70)
-    print()
+        print("=" * 70)
+        print("Sentinel-Log-Shield v2: Interactive Investigation Agent")
+        print("=" * 70)
+        print(f"Model: {MODEL_NAME}")
+        print(f"API Base: {API_BASE_URL}")
+        print("LLM Mode: True")
+        print("=" * 70)
+        print()
 
-    difficulties = ["easy", "medium", "hard"]
-    results = []
+        difficulties = ["easy", "medium", "hard"]
+        results = []
 
-    for diff in difficulties:
-        for si in range(args.seeds):
-            seed = args.seed_start + si
-            if results:
-                print()
-            print(f"{'--' * 30}")
-            print(f"  Episode: {diff.upper()} seed={seed}")
-            print(f"{'--' * 30}")
-            result = run_episode(difficulty=diff, seed=seed)
-            results.append(result)
+        for diff in difficulties:
+            for si in range(args.seeds):
+                seed = args.seed_start + si
+                if results:
+                    print()
+                print(f"{'--' * 30}")
+                print(f"  Episode: {diff.upper()} seed={seed}")
+                print(f"{'--' * 30}")
+                try:
+                    result = run_episode(difficulty=diff, seed=seed)
+                    results.append(result)
+                except Exception as e:
+                    print(f"[ERROR] Failed to run episode {diff} seed={seed}: {e}", file=sys.stderr)
+                    # Log failure and continue
+                    results.append({
+                        "difficulty": diff,
+                        "steps": 0,
+                        "total_score": 0.0,
+                        "f1_score": 0.0,
+                        "discovery_rate": 0.0,
+                        "success": False,
+                        "rewards": [],
+                        "metrics": {},
+                        "error": str(e),
+                    })
 
-    # Summary table
-    print()
-    print("=" * 70)
-    print("  INVESTIGATION SUMMARY")
-    print("=" * 70)
-    print(f"  {'Difficulty':<12} {'Steps':>6} {'F1':>8} {'Discovery':>10} {'Score':>8} {'Result':>8}")
-    print(f"  {'--' * 28}")
-    for r in results:
-        status = "PASS" if r["success"] else "FAIL"
-        print(f"  {r['difficulty']:<12} {r['steps']:>6} {r['f1_score']:>8.3f} "
-              f"{r['discovery_rate']:>10.3f} {r['total_score']:>8.3f} {status:>8}")
+        # Summary table
+        print()
+        print("=" * 70)
+        print("  INVESTIGATION SUMMARY")
+        print("=" * 70)
+        print(f"  {'Difficulty':<12} {'Steps':>6} {'F1':>8} {'Discovery':>10} {'Score':>8} {'Result':>8}")
+        print(f"  {'--' * 28}")
+        for r in results:
+            status = "PASS" if r["success"] else "FAIL"
+            print(f"  {r['difficulty']:<12} {r['steps']:>6} {r['f1_score']:>8.3f} "
+                  f"{r['discovery_rate']:>10.3f} {r['total_score']:>8.3f} {status:>8}")
 
-    avg_f1 = sum(r["f1_score"] for r in results) / len(results)
-    avg_score = sum(r["total_score"] for r in results) / len(results)
-    scores = [r["total_score"] for r in results]
-    score_std = statistics.pstdev(scores) if len(scores) > 1 else 0.0
-    print(f"  {'--' * 28}")
-    print(f"  {'AVERAGE':<12} {'':>6} {avg_f1:>8.3f} {'':>10} {avg_score:>8.3f}  (std={score_std:.3f})")
-    print()
+        if results:
+            avg_f1 = sum(r["f1_score"] for r in results) / len(results)
+            avg_score = sum(r["total_score"] for r in results) / len(results)
+            scores = [r["total_score"] for r in results]
+            score_std = statistics.pstdev(scores) if len(scores) > 1 else 0.0
+            print(f"  {'--' * 28}")
+            print(f"  {'AVERAGE':<12} {'':>6} {avg_f1:>8.3f} {'':>10} {avg_score:>8.3f}  (std={score_std:.3f})")
+        print()
+        
+        return 0
+    
+    except KeyboardInterrupt:
+        print("\n[INFO] Interrupted by user", file=sys.stderr)
+        return 130
+    except Exception as e:
+        print(f"[CRITICAL] Unhandled error in main: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
