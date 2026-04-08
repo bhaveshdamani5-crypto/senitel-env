@@ -983,7 +983,11 @@ class SentinelEnvironment:
         discovery_component = discovery_rate * 0.2  # Discovery is 20%
         completeness = recall * 0.1  # Raw recall is 10%
 
-        total_reward = max(MIN_SCORE, min(MAX_SCORE, base_score + discovery_component + completeness + efficiency_bonus + secret_penalty))
+        total_reward = max(EPSILON, min(1.0 - EPSILON, base_score + discovery_component + completeness + efficiency_bonus + secret_penalty))
+
+        # Helper to ensure all reward components stay in valid bounds
+        def strictly_bound(val: float) -> float:
+            return max(EPSILON, min(1.0 - EPSILON, val))
 
         hint = f"📊 Final Score: {total_reward:.3f} | F1: {f1:.3f} | Discovery: {discovery_rate:.0%} | "
         hint += f"Redacted: {true_positives}/{total_pii}"
@@ -991,11 +995,11 @@ class SentinelEnvironment:
             hint += f" | ⚠️ CRITICAL: {len(missed_secrets)} secret(s) missed!"
 
         return Reward(
-            redaction_score=base_score + completeness,
-            discovery_bonus=discovery_component,
-            efficiency_bonus=efficiency_bonus,
-            penalty=secret_penalty,
-            total_reward=total_reward,
+            redaction_score=strictly_bound(base_score + completeness),
+            discovery_bonus=strictly_bound(discovery_component),
+            efficiency_bonus=strictly_bound(efficiency_bonus),
+            penalty=strictly_bound(secret_penalty),
+            total_reward=strictly_bound(total_reward),
             feedback=hint,
             metrics={
                 "precision": precision,
