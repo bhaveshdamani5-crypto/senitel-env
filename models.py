@@ -10,7 +10,8 @@ from typing import List, Dict, Optional, Any
 from enum import Enum
 
 # Scores must be strictly between 0 and 1 (not 0.0 or 1.0)
-_EPSILON = 0.0001
+# Updated to 0.01 to provide more margin from boundaries
+_EPSILON = 0.01
 _MAX_SCORE = 1.0 - _EPSILON
 
 
@@ -198,23 +199,28 @@ class Reward(BaseModel):
     @model_validator(mode="after")
     def _ensure_strict_scores(self) -> "Reward":
         """
-        Guarantee ALL score fields and metrics are strictly between 0 and 1.
+        Guarantee score fields are strictly between 0 and 1 for validator.
         OpenEnv validator is strict: 0.0 and 1.0 are rejected.
+        total_reward can be negative (for penalties), but score must be bounded.
         """
-        # Clamp top-level floats (allow penalty to be negative)
+        # Clamp score-related floats to bounds
         self.redaction_score = max(_EPSILON, min(_MAX_SCORE, self.redaction_score))
         self.discovery_bonus = max(_EPSILON, min(_MAX_SCORE, self.discovery_bonus))
         self.efficiency_bonus = max(_EPSILON, min(_MAX_SCORE, self.efficiency_bonus))
         # self.penalty allowed to be negative (raw penalty)
-        self.total_reward = max(_EPSILON, min(_MAX_SCORE, self.total_reward))
+        # self.total_reward allowed to be negative (sum of components)
         
-        # Sync 'score' field (OpenEnv requirement)
-        self.score = self.total_reward
+        # Sync 'score' field (OpenEnv requirement) - this is what gets validated
+        self.score = max(_EPSILON, min(_MAX_SCORE, self.total_reward))
         
-        # Recursively clamp metrics
+        # Recursively clamp metrics that are scores
         if self.metrics:
             for k, v in self.metrics.items():
-                if isinstance(v, float):
+                if isinstance(v, float) and k in {
+                    "precision", "recall", "f1_score", "discovery_rate", "efficiency",
+                    "f1_component", "discovery_component", "recall_component", 
+                    "efficiency_bonus", "total_score", "coverage"
+                }:
                     self.metrics[k] = max(_EPSILON, min(_MAX_SCORE, v))
         
         return self

@@ -31,7 +31,8 @@ from models import (
 # ============================================================================
 
 # Scores must be strictly between 0 and 1, not exactly 0.0 or 1.0
-EPSILON = 0.0001
+# Updated to 0.01 to provide more margin from boundaries
+EPSILON = 0.01
 MIN_SCORE = EPSILON
 MAX_SCORE = 1.0 - EPSILON
 
@@ -46,6 +47,22 @@ def safe_unit(x: float) -> float:
     if x is None:
         return EPSILON
     return max(EPSILON, min(1.0 - EPSILON, float(x)))
+
+
+def safe_score(x: float) -> float:
+    """Clamp to strictly (EPSILON, 1-EPSILON), never exactly 0.0 or 1.0.
+    Use for normal probabilities, proportions, rates."""
+    if x is None:
+        return EPSILON
+    return max(EPSILON, min(1.0 - EPSILON, float(x)))
+
+
+def safe_nonnegative(x: float) -> float:
+    """Clamp to [0.0, +inf), allowing zero.
+    Use for counts, bonuses, or additive metrics."""
+    if x is None:
+        return 0.0
+    return max(0.0, float(x))
 
 
 def safe_score(x: float) -> float:
@@ -851,7 +868,7 @@ class SentinelEnvironment:
         # Honeypot trap: investigating certain decoys penalizes the agent
         if self.scenario and target in getattr(self.scenario, "honeypots", set()):
             return Reward(
-                total_reward=safe_unit(0.0),  # BOUNDED: use EPSILON
+                total_reward=-0.5,  # Negative reward for honeypot
                 penalty=-0.5,  # Raw negative penalty for honeypot
                 feedback=f"⚠️ Honeypot triggered: '{target}' was a canary decoy. Penalty applied.",
                 metrics={"honeypot_triggered": 1},

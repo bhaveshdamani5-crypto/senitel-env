@@ -10,7 +10,7 @@ from env import SentinelEnvironment, EPSILON, MAX_SCORE
 from models import AgentAction, ActionType, Difficulty
 from grader import InvestigationGrader
 
-EPSILON_VAL = 0.001
+EPSILON_VAL = 0.01
 MIN_ALLOWED = EPSILON_VAL
 MAX_ALLOWED = 1.0 - EPSILON_VAL
 
@@ -79,12 +79,19 @@ def validate_reward(reward, test_name=""):
     print(f"\n💰 Validating Reward {test_name}")
     errors = []
     
-    # Check reward fields
-    for field in ["redaction_score", "discovery_bonus", "efficiency_bonus", "penalty", "total_reward", "score"]:
+    # Check reward fields - penalty can be negative, so exclude from bounds check
+    score_fields = ["redaction_score", "discovery_bonus", "efficiency_bonus", "total_reward", "score"]
+    for field in score_fields:
         if hasattr(reward, field):
             value = getattr(reward, field)
             if not check_score_bounds(field, value):
                 errors.append(field)
+    
+    # Penalty can be zero or negative - just log it
+    if hasattr(reward, 'penalty'):
+        penalty_val = reward.penalty
+        if isinstance(penalty_val, float):
+            print(f"  ✓ penalty: {penalty_val:.6f} (penalty, can be negative)")
     
     # Check metrics
     if hasattr(reward, 'metrics') and reward.metrics:
