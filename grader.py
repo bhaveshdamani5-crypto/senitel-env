@@ -84,9 +84,9 @@ class InvestigationGrader:
         efficiency_bonus = efficiency * 0.05
         secret_penalty = -0.30 * secrets_missed
 
-        total_score = max(MIN_SCORE, min(MAX_SCORE,
-            f1_component + discovery_component + recall_component + efficiency_bonus + secret_penalty
-        ))
+        # Calculate raw total before clamping
+        raw_total = f1_component + discovery_component + recall_component + efficiency_bonus + secret_penalty
+        total_score = max(MIN_SCORE, min(MAX_SCORE, raw_total))
 
         # Letter grade
         grade = InvestigationGrader._letter_grade(total_score)
