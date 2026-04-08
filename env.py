@@ -49,11 +49,11 @@ def safe_unit(x: float) -> float:
 
 
 def safe_score(x: float) -> float:
-    """Clamp to [0.0, 1.0], allowing exact boundaries.
+    """Clamp to strictly (EPSILON, 1-EPSILON), never exactly 0.0 or 1.0.
     Use for normal probabilities, proportions, rates."""
     if x is None:
-        return 0.0
-    return max(0.0, min(1.0, float(x)))
+        return EPSILON
+    return max(EPSILON, min(1.0 - EPSILON, float(x)))
 
 
 def safe_nonnegative(x: float) -> float:
@@ -973,7 +973,7 @@ class SentinelEnvironment:
 
         # Coverage so far — BOUNDED to avoid 0.0 and 1.0 extremes
         coverage_raw = len(self.redacted_pii) / total_pii if total_pii > 0 else 0.0
-        coverage = safe_score(coverage_raw)
+        coverage = safe_unit(coverage_raw)
 
         hint = f"Redacted {correct} items correctly."
         if false_positives:
@@ -1009,18 +1009,18 @@ class SentinelEnvironment:
         false_positives = len(self.redacted_pii - ground_truth)
         false_negatives = len(ground_truth - self.redacted_pii)
 
-        precision = safe_score(true_positives / (true_positives + false_positives)) if (true_positives + false_positives) > 0 else EPSILON
-        recall = safe_score(true_positives / total_pii) if total_pii > 0 else EPSILON
-        f1 = safe_score((2 * precision * recall) / (precision + recall)) if (precision + recall) > 0 else EPSILON
+        precision = safe_unit(true_positives / (true_positives + false_positives)) if (true_positives + false_positives) > 0 else EPSILON
+        recall = safe_unit(true_positives / total_pii) if total_pii > 0 else EPSILON
+        f1 = safe_unit((2 * precision * recall) / (precision + recall)) if (precision + recall) > 0 else EPSILON
 
         # Discovery rate: what fraction of PII was even discovered (seen in scan/investigate)
         discovered_pii = self.discovered_entities & ground_truth
-        discovery_rate = safe_score(len(discovered_pii) / total_pii) if total_pii > 0 else 0.0
+        discovery_rate = safe_unit(len(discovered_pii) / total_pii) if total_pii > 0 else EPSILON
 
         # Efficiency bonus: steps saved
         budget = self.scenario.budget
         steps_saved = max(0, budget - self.steps_used)
-        efficiency_bonus = safe_score(0.05 * steps_saved)
+        efficiency_bonus = safe_unit(max(EPSILON, 0.05 * steps_saved)) if steps_saved > 0 else EPSILON
 
         # Secret penalty: critical secrets missed (capped to prevent unbounded penalties)
         secret_tokens = self.scenario.all_pii.get("token", set())
@@ -1057,7 +1057,7 @@ class SentinelEnvironment:
                 "precision": safe_unit(precision),  # BOUNDED: avoid 0.0 or 1.0
                 "recall": safe_unit(recall),  # BOUNDED: avoid 0.0 or 1.0
                 "f1_score": safe_unit(f1),  # BOUNDED: avoid 0.0 or 1.0
-                "discovery_rate": safe_score(discovery_rate),  # Can be 0.0
+                "discovery_rate": safe_unit(discovery_rate),  # BOUNDED: avoid 0.0 or 1.0
                 "efficiency_bonus": safe_unit(efficiency_bonus),  # BOUNDED: avoid 0.0 or 1.0
                 "secrets_missed": len(missed_secrets),  # Count, not a score
                 "true_positives": true_positives,  # Count, not a score
