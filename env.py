@@ -978,16 +978,23 @@ class SentinelEnvironment:
         missed_secrets = secret_tokens - self.redacted_pii
         secret_penalty = -0.3 * min(len(missed_secrets), 3)  # Max penalty -0.9 for 3+ missed secrets
 
+        # Helper to ensure all values stay in valid bounds (0.0001, 0.9999)
+        def strictly_bound(val: float) -> float:
+            return max(EPSILON, min(1.0 - EPSILON, val))
+
         # Final score composition (normalized to epsilon bounds: 0.0001 - 0.9999)
         base_score = f1 * 0.7  # F1 is 70% of score
         discovery_component = discovery_rate * 0.2  # Discovery is 20%
         completeness = recall * 0.1  # Raw recall is 10%
 
-        total_reward = max(EPSILON, min(1.0 - EPSILON, base_score + discovery_component + completeness + efficiency_bonus + secret_penalty))
+        # Calculate raw total before bounds, then clamp strictly
+        raw_total = base_score + discovery_component + completeness + efficiency_bonus + secret_penalty
+        total_reward = strictly_bound(raw_total)
 
-        # Helper to ensure all reward components stay in valid bounds
-        def strictly_bound(val: float) -> float:
-            return max(EPSILON, min(1.0 - EPSILON, val))
+        # Compute penalty factor: convert negative penalty to bounded (0, 1) value
+        # 0 secrets missed → MAX_SCORE (no penalty)
+        # 3+ secrets missed → EPSILON (maximum penalty)
+        penalty_factor = strictly_bound(1.0 - EPSILON - (0.3 * min(len(missed_secrets), 3)))
 
         hint = f"📊 Final Score: {total_reward:.3f} | F1: {f1:.3f} | Discovery: {discovery_rate:.0%} | "
         hint += f"Redacted: {true_positives}/{total_pii}"
@@ -998,24 +1005,24 @@ class SentinelEnvironment:
             redaction_score=strictly_bound(base_score + completeness),
             discovery_bonus=strictly_bound(discovery_component),
             efficiency_bonus=strictly_bound(efficiency_bonus),
-            penalty=secret_penalty,  # Raw penalty, not a score - keep negative
-            total_reward=strictly_bound(total_reward),
+            penalty=penalty_factor,  # Bounded (0, 1) penalty factor - NO negative values
+            total_reward=total_reward,
             feedback=hint,
             metrics={
-                "precision": precision,
-                "recall": recall,
-                "f1_score": f1,
-                "discovery_rate": discovery_rate,
-                "efficiency_bonus": efficiency_bonus,
-                "missed_secrets": len(missed_secrets),
-                "true_positives": true_positives,
-                "false_positives": false_positives,
-                "false_negatives": false_negatives,
-                "steps_used": self.steps_used,
-                "steps_budget": budget,
-                "total_score": max(MIN_SCORE, min(MAX_SCORE, total_reward)),
-                "total_pii": total_pii,
-                "grade": self._letter_grade(max(MIN_SCORE, min(MAX_SCORE, total_reward))),
+                "precision": strictly_bound(precision),  # BOUNDED: avoid 0.0 or 1.0
+                "recall": strictly_bound(recall),  # BOUNDED: avoid 0.0 or 1.0
+                "f1_score": strictly_bound(f1),  # BOUNDED: avoid 0.0 or 1.0
+                "discovery_rate": strictly_bound(discovery_rate),  # BOUNDED: avoid 0.0 or 1.0
+                "efficiency_bonus": strictly_bound(efficiency_bonus),  # BOUNDED: avoid 0.0 or 1.0
+                "secrets_missed": len(missed_secrets),  # Count, not a score
+                "true_positives": true_positives,  # Count, not a score
+                "false_positives": false_positives,  # Count, not a score
+                "false_negatives": false_negatives,  # Count, not a score
+                "steps_used": self.steps_used,  # Count, not a score
+                "steps_budget": budget,  # Count, not a score
+                "total_score": total_reward,  # Already bounded
+                "total_pii": total_pii,  # Count, not a score
+                "grade": self._letter_grade(total_reward),  # String, not a score
             },
         ), hint
 
