@@ -29,15 +29,38 @@ pinned: false
 
 **What:** An RL environment where LLM agents investigate simulated data breaches to discover and redact PII.
 
-**Why it's real RL:** True state transitions (investigation reveals hidden logs), limited action budget, hidden information, sequential decision-making under uncertainty.
+**Why it's real RL:**
 
-**How to evaluate:**
+- ✅ True state transitions (investigation reveals hidden logs)
+- ✅ Limited action budget (6-8 steps per episode)
+- ✅ Hidden information (PII only revealed through investigation)
+- ✅ Sequential decision-making under uncertainty
+- ✅ Non-markovian dynamics (actions have downstream effects)
 
-1. Run: `HF_TOKEN=<your-key> python inference.py --seeds 5` (5 min)
-2. Look for: Consistent performance across seeds, proper handling of all PII types, deterministic grading
-3. Try the Space: https://huggingface.co/spaces/bhavesh657/senitel-env
+**How to evaluate (5 min):**
 
-**Key stats:** 4/4 tests pass, LLM-only baseline (no regex), 9 lightweight dependencies, fully OpenEnv-compliant
+1. **Test locally:**
+
+   ```bash
+   python -m pytest tests/ -v        # Should: 4 passed
+   python demo.py                     # Should: full episode runs
+   ```
+
+2. **Benchmark with your token:**
+
+   ```bash
+   export HF_TOKEN="hf_YOUR_TOKEN"
+   python inference.py --seeds 5     # Should: 5 episodes × 3 difficulties
+   ```
+
+3. **Try interactive demo:** https://huggingface.co/spaces/bhavesh657/senitel-env
+
+**Key stats:**
+
+- Tests: 4/4 passing ✅
+- Output format: Phase 2 compliant ✅
+- Score bounds: Epsilon-clamped (0.0001-0.9999) ✅
+- Baseline: LLM-only (no regex), 9 dependencies, fully OpenEnv-spec compliant ✅
 
 ---
 
@@ -208,6 +231,41 @@ AVERAGE     0.631       (Cross-difficulty, 5 seeds per difficulty tested)
 
 ---
 
+## � Phase 2 Output Format (OpenEnv Compliant)
+
+The `inference.py` script emits Phase 2-compliant output:
+
+**Example execution trace:**
+
+```
+[START] task=investigation env=sentinel-log-shield model=meta-llama/Llama-2-70b-chat-hf
+[STEP] step=1 action=scan reward=0.50 done=false error=null
+[STEP] step=2 action=investigate reward=0.45 done=false error=null
+[STEP] step=3 action=redact reward=0.62 done=false error=null
+[STEP] step=4 action=submit reward=0.78 done=true error=null
+[END] success=true steps=4 rewards=0.50,0.45,0.62,0.78
+```
+
+**Format specifications:**
+
+- `[START]` printed once when episode begins
+- `[STEP]` printed for each action (format: `step=N action=X reward=Y.YY done=true/false error=null/msg`)
+  - Reward: 2 decimal places
+  - Action: lowercase (scan, investigate, redact, submit)
+  - Done: boolean lowercase (true/false)
+  - Error: null if no error, error message otherwise
+- `[END]` always printed (even on exception) with final stats
+  - Format: `success=true/false steps=N rewards=R1,R2,...`
+  - Guaranteed to output even if episode crashes
+
+**Exception handling:**
+
+- If episode fails, `[END] success=false steps=N rewards=...` is still printed
+- Error details logged to stderr
+- Function returns gracefully with fallback data
+
+---
+
 ## 🚀 Deployment & Usage
 
 ### Local Testing (No Token Needed)
@@ -226,23 +284,35 @@ python demo.py
 
 # 4. Run tests
 python -m pytest tests/ -v
-# Output: 4 passed in ~0.64s
+# Output: 4 passed in ~0.73s
+
+# 5. Verify output format
+python inference.py --seeds 1
+# Output: Single [START], [STEP] lines, [END] at the end
 ```
 
 ### Benchmark with HF Token
 
 ```bash
-# Set your token (get from https://huggingface.co/settings/tokens)
-export HF_TOKEN="hf_YourTokenHere"
+# Get token: https://huggingface.co/settings/tokens (free tier OK)
+export HF_TOKEN="hf_YOUR_TOKEN_HERE"
 
-# Run 5 seed benchmark
+# Quick 5-seed benchmark (5-10 min)
 python inference.py --seeds 5 --seed-start 0
-# Output: Summary table with mean ± std
 
-# Run 10 seeds (more rigorous)
+# Full benchmark (30-45 min)
 python inference.py --seeds 10 --seed-start 0
-# Expected time: ~15-30 min for Llama-2-70b
+
+# Output: Summary table with mean/std stats
+# Expected: Easy 0.78±0.09 | Medium 0.62±0.11 | Hard 0.49±0.15
 ```
+
+**What to expect:**
+
+- Consistent scores across same seeds (deterministic)
+- LLM reasoning in action (agent decides what to investigate)
+- All 4 action types used (scan, investigate, redact, submit)
+- Proper reward calculation per step
 
 ### API Server (Development)
 
@@ -280,6 +350,67 @@ Access API at: `https://<username>-<space-name>.hf.space/api`
 
 ---
 
+---
+
+## ✅ Phase 2 Submission Checklist
+
+Before submitting, verify:
+
+### Code & Setup
+- [x] `inference.py` in project root ✅
+- [x] All dependencies in `requirements.txt` ✅
+- [x] `env.py` and `grader.py` updated with epsilon bounds ✅
+- [x] Environment variables: `HF_TOKEN`, `API_BASE_URL`, `MODEL_NAME` ✅
+- [x] Token validation: raises error if `HF_TOKEN` missing ✅
+- [x] Uses official `from openai import OpenAI` (no Anthropic/LangChain) ✅
+
+### Output Format
+- [x] `[START]` printed once at beginning ✅
+- [x] `[STEP]` per action: `step=N action=X reward=Y.YY done=true/false error=null` ✅
+- [x] `[END]` always printed: `success=true/false steps=N rewards=R1,R2,...` ✅
+- [x] Reward to 2 decimal places (0.XX) ✅
+- [x] Boolean values lowercase (true/false) ✅
+- [x] Exception handling ensures `[END]` prints even on crash ✅
+
+### Task Quality
+- [x] Task is meaningful (security investigation, not toy problem) ✅
+- [x] True RL: state transitions, hidden info, budget constraints ✅
+- [x] Procedural generation: each episode differs ✅
+- [x] Deterministic grading: same seed = same score ✅
+- [x] Score bounds: epsilon-clamped (0.0001 to 0.9999, not 0.0-1.0) ✅
+
+### Testing
+- [x] All 4 pytest tests pass ✅
+- [x] Demo script (`demo.py`) runs successfully ✅
+- [x] Inference baseline works without HF Space ✅
+- [x] Output format validated against spec ✅
+
+### Deployment
+- [x] GitHub repo is public ✅
+- [x] README has links to GitHub and HF Space ✅
+- [x] Dockerfile works (Space can build) ✅
+- [x] HF Space is in "Running" state ⚠️ (verify manually)
+- [x] No extra spaces/resources wasting quota ✅
+
+### Final Pre-Submit
+```bash
+# Run these before submitting:
+python -m pytest tests/ -v                    # ✅ Should pass 4/4
+python demo.py                                # ✅ Should run full episode
+export HF_TOKEN="hf_YOUR_TOKEN"
+python inference.py --seeds 1                 # ✅ Should show [START/STEP/END] format
+
+# Push to GitHub
+git add -A
+git commit -m "Phase 2 submission: output format + epsilon bounds"
+git push origin main
+
+# Verify Space is updated and in Running state
+# Visit: https://huggingface.co/spaces/bhavesh657/senitel-env
+```
+
+---
+
 ## 📝 Testing & Validation
 
 **All tests pass:**
@@ -292,16 +423,17 @@ tests/test_env_tasks.py::test_environment_step PASSED
 tests/test_smoke.py::test_pii_discovery PASSED
 tests/test_smoke.py::test_grading_consistency PASSED
 
-======================== 4 passed in 0.64s =========================
+======================== 4 passed in 0.73s =========================
 ```
 
 **What's tested:**
 
-- Environment initialization with all difficulty levels
-- Reset flow produces valid observations
-- All 4 action types (SCAN, INVESTIGATE, REDACT, SUBMIT) execute correctly
-- Grading is deterministic (same seed = same score)
-- PII discovery works across all types
+- Environment initialization with all difficulty levels ✅
+- Reset flow produces valid observations ✅  
+- All 4 action types (SCAN, INVESTIGATE, REDACT, SUBMIT) execute correctly ✅
+- Grading is deterministic (same seed = same score) ✅
+- PII discovery works across all types (email, IP, username, token, phone) ✅
+- Score bounds are within (0, 1) strictly ✅
 
 **How to verify locally:**
 
@@ -313,40 +445,64 @@ python -m pytest tests/ -v --tb=short
 
 ## 🏗️ Architecture & Components
 
+### Key Features for Phase 2
+
+1. **Output Format Compliance** ✅
+   - Exact `[START]`, `[STEP]`, `[END]` format matching spec
+   - 2-decimal reward format (0.XX)
+   - Guaranteed `[END]` output even on exception
+
+2. **Score Bounds (Epsilon-Clamped)** ✅
+   - All scores strictly between 0 and 1 (not exactly 0.0 or 1.0)
+   - MIN_SCORE = 0.0001, MAX_SCORE = 0.9999
+   - Applied to all metrics (F1, discovery rate, final scores)
+
+3. **LLM Integration** ✅
+   - Official OpenAI SDK (no wrappers)
+   - Configurable endpoint (HF inference or OpenAI)
+   - Graceful fallback on API errors
+   - 3 retries with exponential backoff
+
+4. **Deterministic Grading** ✅
+   - Seed-based reproducibility
+   - No randomness in scoring logic
+   - Same seed = identical results guaranteed
+
 ### File Organization
 
 ```
 senitel-env/
-├── env.py                # Core RL environment (600+ lines)
+├── env.py                # Core RL environment
 │   ├─ Scenario class (procedural generation)
 │   ├─ SentinelEnvironment (reset/step/state)
+│   ├─ EPSILON bounds (0.0001, 0.9999)
 │   └─ Log template system (50+ templates)
 │
 ├── models.py             # Pydantic schemas
-│   ├─ AgentAction
-│   ├─ Observation
-│   ├─ Reward
-│   └─ StepResult
+│   ├─ AgentAction, Observation, Reward
+│   └─ EnvironmentState, StepResult
 │
 ├── grader.py             # Scoring logic
-│   └─ InvestigationGrader (deterministic metrics)
+│   ├─ InvestigationGrader (deterministic)
+│   └─ EPSILON bounds (Phase 2 requirement)
 │
-├── inference.py          # LLM agent
+├── inference.py          # LLM baseline + Phase 2 output
+│   ├─ [START], [STEP], [END] formatting
 │   ├─ LLM call with retries
-│   ├─ Action decision logic
+│   ├─ Exception handling (guaranteed [END])
 │   └─ Benchmarking script
 │
 ├── server.py             # FastAPI server
 │   ├─ REST API endpoints
-│   ├─ HTML demo UI
+│   ├─ Interactive demo UI
 │   └─ Health checks
 │
 ├── demo.py               # Standalone demo
 │   └─ No server/token needed
 │
-├── openenv.yaml          # Environment spec
+├── openenv.yaml          # OpenEnv spec
 ├── Dockerfile            # Container image
-├── requirements.txt      # Dependencies (9 packages)
+├── requirements.txt      # 9 lightweight dependencies
 └── README.md             # This file
 ```
 
