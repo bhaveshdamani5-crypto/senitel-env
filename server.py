@@ -76,12 +76,25 @@ def _extract_pii(logs: List[str]) -> List[Dict[str, str]]:
                 if v not in seen and len(v) > 5:
                     found.append({"original": v, "type": "token"})
                     seen.add(v)
-        for pat in [r'\bsk_[a-zA-Z0-9_]{10,}\b', r'\bghp_[a-zA-Z0-9]{10,}\b', r'\bhf_[a-zA-Z0-9]{10,}\b',
-                    r'\bAKIA[A-Z0-9]{12,}\b', r'\beyJ[a-zA-Z0-9_-]{20,}\b', r'api_key_[A-Za-z0-9]{10,}',
-                    r'(?:key|token|secret|credential)\s*=\s*(\S{8,})']:
-            for m in re.finditer(pat, log, re.IGNORECASE):
+        # Token patterns (High-difficulty tokens)
+        for pattern in [
+            r'\bsk_(?:live|test)_[a-zA-Z0-9]{24,}\b', # Stripe
+            r'\bghp_[a-zA-Z0-9]{36,}\b',              # GitHub
+            r'\bhf_[a-zA-Z0-9]{34,}\b',              # HuggingFace
+            r'\bAKIA[A-Z0-9]{16}\b',                  # AWS Access Key
+            r'\bASIA[A-Z0-9]{16}\b',                  # AWS Session Key
+            r'\beyJ[a-zA-Z0-9_-]{30,}\.eyJ[a-zA-Z0-9_-]{30,}\.[a-zA-Z0-9_-]{30,}\b', # JWT
+            r'\bapi[_-]?key[_-]?[a-zA-Z0-9]{20,}\b', # Generic API key
+            r'xox[pb]-[0-9A-Za-z-]{10,}',             # Slack
+            r'(?:key|token|secret|credential|password|pwd|auth)\s*[:=]\s*["\']?([a-zA-Z0-9._%+-]{12,})["\']?', # Assignment-based
+            r'\b[A-Za-f0-9]{32}\b',                  # MD5/Entropy
+            r'\b[A-Za-f0-9]{40}\b',                  # SHA1/Entropy
+        ]:
+            for m in re.finditer(pattern, log, re.IGNORECASE):
                 v = m.group(1) if m.lastindex else m.group(0)
-                if v not in seen and len(v) > 5: found.append({"original": v, "type": "token"}); seen.add(v)
+                if v not in seen and len(v) > 5:
+                    found.append({"original": v, "type": "token"})
+                    seen.add(v)
     return found
 
 
@@ -176,9 +189,9 @@ def run_demo_episode(difficulty: str = "medium") -> Dict:
 
     trace["final_metrics"] = {k: round(v, 6) if isinstance(v, float) else v for k, v in result.reward.metrics.items()}
     trace["total_reward"] = round(sum(s["reward"] for s in trace["steps"]), 6)
-    trace["final_score"] = trace["final_metrics"].get("total_score", 1e-6)
-    trace["f1_score"] = trace["final_metrics"].get("f1_score", 1e-6)
-    trace["discovery_rate"] = trace["final_metrics"].get("discovery_rate", 1e-6)
+    trace["final_score"] = trace["final_metrics"].get("total_score", 0.001)
+    trace["f1_score"] = trace["final_metrics"].get("f1_score", 0.001)
+    trace["discovery_rate"] = trace["final_metrics"].get("discovery_rate", 0.001)
     trace["grade"] = trace["final_metrics"].get("grade", "?")
     return trace
 
