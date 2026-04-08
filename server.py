@@ -17,7 +17,7 @@ import logging
 import re
 import base64
 from typing import Optional, List, Dict, Set
-from env import SentinelEnvironment
+from env import SentinelEnvironment, EPSILON
 from models import (
     AgentAction, ActionType, StepResult, ResetResult,
     EnvironmentState, Difficulty,
@@ -189,9 +189,9 @@ def run_demo_episode(difficulty: str = "medium") -> Dict:
 
     trace["final_metrics"] = {k: round(v, 6) if isinstance(v, float) else v for k, v in result.reward.metrics.items()}
     trace["total_reward"] = round(sum(s["reward"] for s in trace["steps"]), 6)
-    trace["final_score"] = trace["final_metrics"].get("total_score", 0.001)
-    trace["f1_score"] = trace["final_metrics"].get("f1_score", 0.001)
-    trace["discovery_rate"] = trace["final_metrics"].get("discovery_rate", 0.001)
+    trace["final_score"] = trace["final_metrics"].get("total_score", EPSILON)
+    trace["f1_score"] = trace["final_metrics"].get("f1_score", EPSILON)
+    trace["discovery_rate"] = trace["final_metrics"].get("discovery_rate", EPSILON)
     trace["grade"] = trace["final_metrics"].get("grade", "?")
     return trace
 

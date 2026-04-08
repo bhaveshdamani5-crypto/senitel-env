@@ -47,7 +47,7 @@ except Exception as e:
 
 # Import environment
 sys.path.insert(0, os.path.dirname(__file__))
-from env import SentinelEnvironment
+from env import SentinelEnvironment, EPSILON
 from models import AgentAction, ActionType, Difficulty
 
 
@@ -347,8 +347,8 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
             "difficulty": difficulty,
             "steps": step_num,
             "total_score": sum(episode_rewards),
-            "f1_score": 0.0,
-            "discovery_rate": 0.0,
+            "f1_score": EPSILON,
+            "discovery_rate": EPSILON,
             "success": False,
             "rewards": episode_rewards,
             "metrics": {},
@@ -397,9 +397,9 @@ def main():
                     results.append({
                         "difficulty": diff,
                         "steps": 0,
-                        "total_score": 0.0,
-                        "f1_score": 0.0,
-                        "discovery_rate": 0.0,
+                        "total_score": EPSILON,
+                        "f1_score": EPSILON,
+                        "discovery_rate": EPSILON,
                         "success": False,
                         "rewards": [],
                         "metrics": {},

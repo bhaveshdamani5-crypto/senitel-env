@@ -9,6 +9,7 @@ redaction accuracy, and investigation efficiency.
 Scoring components:
 - F1 Score (precision/recall of redacted vs ground truth) — 70% weight
 - Discovery Rate (fraction of total PII the agent even found) — 20% weight
+- Recall Component (raw recall bonus) — 10% weight
 - Efficiency Bonus (steps saved from budget) — 5% weight
 - Secret Penalty (harsh penalty per missed critical secret) — up to -30%
 """
@@ -91,21 +92,16 @@ class InvestigationGrader:
         # Letter grade
         grade = InvestigationGrader._letter_grade(total_score)
 
-        # Helper to strictly bound values (never return 0.0 or 1.0)
-        def strictly_bound(val: float) -> float:
-            # Clip to EPSILON bounds without any rounding
-            return max(EPSILON, min(1.0 - EPSILON, val))
-
         return {
             # Core metrics - strictly bounded (no rounding, no 0.0 or 1.0)
-            "precision": strictly_bound(precision),
-            "recall": strictly_bound(recall),
-            "f1_score": strictly_bound(f1),
+            "precision": max(MIN_SCORE, min(MAX_SCORE, precision)),
+            "recall": max(MIN_SCORE, min(MAX_SCORE, recall)),
+            "f1_score": max(MIN_SCORE, min(MAX_SCORE, f1)),
             # Discovery
-            "discovery_rate": strictly_bound(discovery_rate),
+            "discovery_rate": max(MIN_SCORE, min(MAX_SCORE, discovery_rate)),
             "discovered_count": discovered_correct,
             # Efficiency
-            "efficiency": strictly_bound(efficiency),
+            "efficiency": max(MIN_SCORE, min(MAX_SCORE, efficiency)),
             "steps_used": steps_used,
             "steps_budget": steps_budget,
             "steps_saved": steps_saved,
@@ -118,14 +114,15 @@ class InvestigationGrader:
             "false_positives": false_positives,
             "false_negatives": false_negatives,
             "total_pii": total,
-            # Score components - only actual scores clamped
-            "f1_component": strictly_bound(f1_component),
-            "discovery_component": strictly_bound(discovery_component),
-            "recall_component": strictly_bound(recall_component),
-            "efficiency_bonus": strictly_bound(efficiency_bonus),
-            "secret_penalty": secret_penalty,  # Raw penalty, not a score - keep negative
+            # Score components - only actual scores clamped (strictly bounded for validator)
+            "f1_component": max(MIN_SCORE, min(MAX_SCORE, f1_component)),
+            "discovery_component": max(MIN_SCORE, min(MAX_SCORE, discovery_component)),
+            "recall_component": max(MIN_SCORE, min(MAX_SCORE, recall_component)),
+            "efficiency_bonus": max(MIN_SCORE, min(MAX_SCORE, efficiency_bonus)),
+            # NOTE: secret_penalty is NOT included here because it's negative and violates strict bounds
+            # The penalty is already incorporated into total_score via raw_total calculation above
             # Final
-            "total_score": strictly_bound(total_score),
+            "total_score": max(MIN_SCORE, min(MAX_SCORE, total_score)),
             "grade": grade,
         }
 
