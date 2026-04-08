@@ -91,16 +91,21 @@ class InvestigationGrader:
         # Letter grade
         grade = InvestigationGrader._letter_grade(total_score)
 
+        # Helper to round and re-clamp (rounding can push values back to boundaries)
+        def safe_round(val: float, decimals: int = 2) -> float:
+            rounded = round(max(MIN_SCORE, min(MAX_SCORE, val)), decimals)
+            return max(MIN_SCORE, min(MAX_SCORE, rounded))
+
         return {
             # Core metrics - clamp to valid range
-            "precision": round(max(MIN_SCORE, min(MAX_SCORE, precision)), 4),
-            "recall": round(max(MIN_SCORE, min(MAX_SCORE, recall)), 4),
-            "f1_score": round(max(MIN_SCORE, min(MAX_SCORE, f1)), 4),
+            "precision": safe_round(precision, 2),
+            "recall": safe_round(recall, 2),
+            "f1_score": safe_round(f1, 2),
             # Discovery
-            "discovery_rate": round(max(MIN_SCORE, min(MAX_SCORE, discovery_rate)), 4),
+            "discovery_rate": safe_round(discovery_rate, 2),
             "discovered_count": discovered_correct,
             # Efficiency
-            "efficiency": round(max(MIN_SCORE, min(MAX_SCORE, efficiency)), 4),
+            "efficiency": safe_round(efficiency, 2),
             "steps_used": steps_used,
             "steps_budget": steps_budget,
             "steps_saved": steps_saved,
@@ -114,13 +119,13 @@ class InvestigationGrader:
             "false_negatives": false_negatives,
             "total_pii": total,
             # Score components
-            "f1_component": round(f1_component, 4),
-            "discovery_component": round(discovery_component, 4),
-            "recall_component": round(recall_component, 4),
-            "efficiency_bonus": round(efficiency_bonus, 4),
-            "secret_penalty": round(secret_penalty, 4),
+            "f1_component": safe_round(f1_component, 2),
+            "discovery_component": safe_round(discovery_component, 2),
+            "recall_component": safe_round(recall_component, 2),
+            "efficiency_bonus": safe_round(efficiency_bonus, 2),
+            "secret_penalty": safe_round(secret_penalty, 2),
             # Final
-            "total_score": round(total_score, 4),
+            "total_score": safe_round(total_score, 2),
             "grade": grade,
         }
 
