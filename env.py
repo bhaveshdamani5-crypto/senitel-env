@@ -1015,12 +1015,12 @@ class SentinelEnvironment:
 
         # Discovery rate: what fraction of PII was even discovered (seen in scan/investigate)
         discovered_pii = self.discovered_entities & ground_truth
-        discovery_rate = safe_score(len(discovered_pii) / total_pii) if total_pii > 0 else 0.0
+        discovery_rate = safe_score(len(discovered_pii) / total_pii) if total_pii > 0 else EPSILON
 
         # Efficiency bonus: steps saved
         budget = self.scenario.budget
         steps_saved = max(0, budget - self.steps_used)
-        efficiency_bonus = safe_score(0.05 * steps_saved)
+        efficiency_bonus = safe_unit(0.05 * steps_saved) if steps_saved > 0 else EPSILON
 
         # Secret penalty: critical secrets missed (capped to prevent unbounded penalties)
         secret_tokens = self.scenario.all_pii.get("token", set())
@@ -1057,7 +1057,7 @@ class SentinelEnvironment:
                 "precision": safe_unit(precision),  # BOUNDED: avoid 0.0 or 1.0
                 "recall": safe_unit(recall),  # BOUNDED: avoid 0.0 or 1.0
                 "f1_score": safe_unit(f1),  # BOUNDED: avoid 0.0 or 1.0
-                "discovery_rate": safe_score(discovery_rate),  # Can be 0.0
+                "discovery_rate": safe_unit(discovery_rate),  # BOUNDED: avoid 0.0 or 1.0
                 "efficiency_bonus": safe_unit(efficiency_bonus),  # BOUNDED: avoid 0.0 or 1.0
                 "secrets_missed": len(missed_secrets),  # Count, not a score
                 "true_positives": true_positives,  # Count, not a score
