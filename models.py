@@ -123,7 +123,7 @@ class Observation(BaseModel):
         description="Environment hint about what to look for next"
     )
     score_so_far: float = Field(
-        default=0.0, description="Running score based on redactions submitted"
+        default=_EPSILON, description="Running score based on redactions submitted"
     )
     total_pii_to_find: int = Field(
         default=0,
@@ -151,7 +151,7 @@ class Observation(BaseModel):
                 "steps_used": 1,
                 "difficulty": "medium",
                 "hint": "Try investigating the IP address to discover connected users.",
-                "score_so_far": 0.0,
+                "score_so_far": 0.001,
                 "total_pii_to_find": 8,
                 "pii_found_count": 0,
             }
@@ -201,11 +201,11 @@ class Reward(BaseModel):
         Guarantee ALL score fields and metrics are strictly between 0 and 1.
         OpenEnv validator is strict: 0.0 and 1.0 are rejected.
         """
-        # Clamp top-level floats
+        # Clamp top-level floats (allow penalty to be negative)
         self.redaction_score = max(_EPSILON, min(_MAX_SCORE, self.redaction_score))
         self.discovery_bonus = max(_EPSILON, min(_MAX_SCORE, self.discovery_bonus))
         self.efficiency_bonus = max(_EPSILON, min(_MAX_SCORE, self.efficiency_bonus))
-        self.penalty = max(_EPSILON, min(_MAX_SCORE, self.penalty))
+        # self.penalty allowed to be negative (raw penalty)
         self.total_reward = max(_EPSILON, min(_MAX_SCORE, self.total_reward))
         
         # Sync 'score' field (OpenEnv requirement)
@@ -279,7 +279,7 @@ class EnvironmentState(BaseModel):
     )
     episode_step: int = Field(..., description="Current step number")
     total_reward: float = Field(
-        default=0.0, description="Cumulative reward this episode"
+        default=_EPSILON, description="Cumulative reward this episode"
     )
     action_history: List[Dict[str, Any]] = Field(
         default_factory=list, description="History of actions taken"
