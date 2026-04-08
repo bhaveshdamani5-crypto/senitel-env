@@ -32,7 +32,7 @@ dev = [
 ]
 
 [project.scripts]
-server = "uvicorn.main:run"
+server = "server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
