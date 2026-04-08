@@ -47,7 +47,7 @@ except Exception as e:
 
 # Import environment
 sys.path.insert(0, os.path.dirname(__file__))
-from env import SentinelEnvironment
+from env import SentinelEnvironment, EPSILON
 from models import AgentAction, ActionType, Difficulty
 
 
@@ -124,14 +124,18 @@ def _classify_entity(entity: str) -> str:
         return "ip"
     low = entity.lower()
     if (
-        low.startswith("sk_")
+        low.startswith("sk_live_")
+        or low.startswith("sk_test_")
         or low.startswith("ghp_")
         or low.startswith("hf_")
         or low.startswith("akia")
-        or low.startswith("eyj")
+        or low.startswith("asia")
+        or low.startswith("eyJ") # case-sensitive check often needed, but startswith matches prefix
         or low.startswith("api_key_")
+        or low.startswith("xoxp-")
+        or low.startswith("xoxb-")
         or low.startswith("bearer ")
-        or len(entity) > 15
+        or len(entity) > 24 # Increased threshold for entropy-based tokens
     ):
         return "token"
     return "username"
@@ -343,8 +347,8 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
             "difficulty": difficulty,
             "steps": step_num,
             "total_score": sum(episode_rewards),
-            "f1_score": 0.0,
-            "discovery_rate": 0.0,
+            "f1_score": EPSILON,
+            "discovery_rate": EPSILON,
             "success": False,
             "rewards": episode_rewards,
             "metrics": {},
@@ -393,9 +397,9 @@ def main():
                     results.append({
                         "difficulty": diff,
                         "steps": 0,
-                        "total_score": 0.0,
-                        "f1_score": 0.0,
-                        "discovery_rate": 0.0,
+                        "total_score": EPSILON,
+                        "f1_score": EPSILON,
+                        "discovery_rate": EPSILON,
                         "success": False,
                         "rewards": [],
                         "metrics": {},
