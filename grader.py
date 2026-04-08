@@ -118,12 +118,12 @@ class InvestigationGrader:
             "false_positives": false_positives,
             "false_negatives": false_negatives,
             "total_pii": total,
-            # Score components - also strictly bounded
+            # Score components
             "f1_component": strictly_bound(f1_component),
             "discovery_component": strictly_bound(discovery_component),
             "recall_component": strictly_bound(recall_component),
-            "efficiency_bonus": strictly_bound(efficiency_bonus),
-            "secret_penalty": strictly_bound(secret_penalty),
+            "efficiency_bonus": efficiency_bonus,  # Can be 0 (no bonus if no steps saved)
+            "secret_penalty": secret_penalty,  # Can be 0 or negative (semantically correct)
             # Final
             "total_score": strictly_bound(total_score),
             "grade": grade,
