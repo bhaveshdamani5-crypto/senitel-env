@@ -174,11 +174,11 @@ def run_demo_episode(difficulty: str = "medium") -> Dict:
             "steps_remaining": obs.steps_remaining,
         })
 
-    trace["final_metrics"] = {k: round(v, 4) if isinstance(v, float) else v for k, v in result.reward.metrics.items()}
-    trace["total_reward"] = round(sum(s["reward"] for s in trace["steps"]), 3)
-    trace["final_score"] = trace["final_metrics"].get("total_score", 0)
-    trace["f1_score"] = trace["final_metrics"].get("f1_score", 0)
-    trace["discovery_rate"] = trace["final_metrics"].get("discovery_rate", 0)
+    trace["final_metrics"] = {k: round(v, 6) if isinstance(v, float) else v for k, v in result.reward.metrics.items()}
+    trace["total_reward"] = round(sum(s["reward"] for s in trace["steps"]), 6)
+    trace["final_score"] = trace["final_metrics"].get("total_score", 1e-6)
+    trace["f1_score"] = trace["final_metrics"].get("f1_score", 1e-6)
+    trace["discovery_rate"] = trace["final_metrics"].get("discovery_rate", 1e-6)
     trace["grade"] = trace["final_metrics"].get("grade", "?")
     return trace
 
