@@ -38,33 +38,34 @@ class InvestigationGrader:
         """
         Compute comprehensive metrics for the investigation episode.
 
-        Args:
-            redacted: PII items the agent chose to redact
-            ground_truth: All PII items in the scenario (hidden from agent)
-            discovered: PII items the agent discovered through scanning/investigation
-            steps_used: Number of steps the agent consumed
-            steps_budget: Maximum steps allowed
-            secret_tokens: Set of critical secret tokens in the scenario
-
-        Returns:
-            Dictionary with all metrics and component scores
+        PRINCIPLE: All returned scores are strictly bounded within (MIN_SCORE, MAX_SCORE).
+        - Counts are raw integers (not scores)
+        - Rates are strict percentages bounded [MIN_SCORE, MAX_SCORE]
+        - Penalties are internal deductions, never exposed as negative scores
+        - Empty ground truth returns minimal scores, not perfect scores
         """
-        total = len(ground_truth)
-        if total == 0:
-            # For empty scenarios, return bounded scores
-            # All metrics should be properly bounded between MIN_SCORE and MAX_SCORE
+        # Input validation: steps_budget must be positive for meaningful efficiency calculation
+        assert steps_budget > 0, f"steps_budget must be positive, got {steps_budget}"
+        
+        total_pii = len(ground_truth)
+        
+        # ====== EDGE CASE: Empty ground truth ======
+        # No work to grade → return minimal (failure) scores
+        if total_pii == 0:
             return {
-                "precision": MAX_SCORE,
-                "recall": MAX_SCORE,
-                "f1_score": MAX_SCORE,
-                "discovery_rate": MAX_SCORE,
-                "efficiency": MAX_SCORE,
-                "total_score": MAX_SCORE,
-                "grade": "S",
+                # Score fields - all return minimal bounded scores
+                "precision": MIN_SCORE,
+                "recall": MIN_SCORE,
+                "f1_score": MIN_SCORE,
+                "discovery_rate": MIN_SCORE,
+                "efficiency": MIN_SCORE,
+                "total_score": MIN_SCORE,
+                
+                # Non-score fields (counts and metadata)
                 "discovered_count": 0,
                 "steps_used": steps_used,
                 "steps_budget": steps_budget,
-                "steps_saved": steps_budget - steps_used,
+                "steps_saved": max(0, steps_budget - steps_used),  # Clamp properly
                 "secrets_found": 0,
                 "secrets_missed": 0,
                 "secrets_total": 0,
@@ -72,88 +73,108 @@ class InvestigationGrader:
                 "false_positives": 0,
                 "false_negatives": 0,
                 "total_pii": 0,
-                "f1_component": max(MIN_SCORE, min(MAX_SCORE, 0.7 * MAX_SCORE)),
-                "discovery_component": max(MIN_SCORE, min(MAX_SCORE, 0.2 * MAX_SCORE)),
-                "recall_component": max(MIN_SCORE, min(MAX_SCORE, 0.1 * MAX_SCORE)),
-                "efficiency_bonus": max(MIN_SCORE, min(MAX_SCORE, 0.05 * MAX_SCORE)),
+                
+                # Component scores - all minimal
+                "f1_component": MIN_SCORE,
+                "discovery_component": MIN_SCORE,
+                "recall_component": MIN_SCORE,
+                "efficiency_bonus": MIN_SCORE,
+                
+                # Metadata
+                "grade": "F",
             }
-
-        # Core metrics with proper bounds checking
+        
+        # ====== NORMAL CASE: Non-empty ground truth ======
+        
+        # Count metrics
         true_positives = len(redacted & ground_truth)
         false_positives = len(redacted - ground_truth)
         false_negatives = len(ground_truth - redacted)
-
-        # Calculate base metrics, ensuring no division by zero and proper bounds
+        discovered_correct = len(discovered & ground_truth)
+        secrets_found = len(secret_tokens & redacted)
+        secrets_missed = len(secret_tokens - redacted)
+        secrets_total = len(secret_tokens)
+        
+        # ====== PRECISION: TP / (TP + FP) ======
         if true_positives + false_positives > 0:
             precision = true_positives / (true_positives + false_positives)
         else:
-            precision = MIN_SCORE
-
-        recall = true_positives / total if total > 0 else MIN_SCORE
-
+            precision = MIN_SCORE  # No redactions made → minimal score
+        precision = max(MIN_SCORE, min(MAX_SCORE, precision))
+        
+        # ====== RECALL: TP / total ======
+        recall = true_positives / total_pii  # Always valid (total_pii > 0)
+        recall = max(MIN_SCORE, min(MAX_SCORE, recall))
+        
+        # ====== F1 SCORE: 2 * P * R / (P + R) ======
         if precision + recall > 0:
             f1 = 2 * precision * recall / (precision + recall)
         else:
             f1 = MIN_SCORE
-
-        # Discovery rate
-        discovered_correct = len(discovered & ground_truth)
-        discovery_rate = discovered_correct / total if total > 0 else MIN_SCORE
-
-        # Efficiency (steps saved as fraction of budget)
-        steps_saved = max(0, steps_budget - steps_used)
-        efficiency = steps_saved / steps_budget if steps_budget > 0 else MIN_SCORE
-
-        # Secret handling
-        secrets_found = len(secret_tokens & redacted)
-        secrets_missed = len(secret_tokens - redacted)
-        secrets_total = len(secret_tokens)
-
-        # Composite score calculation
-        f1_component = f1 * 0.70
-        discovery_component = discovery_rate * 0.20
-        recall_component = recall * 0.10
-        efficiency_bonus = efficiency * 0.05
-        secret_penalty = -0.30 * secrets_missed
-
-        # Calculate raw total before clamping
+        f1 = max(MIN_SCORE, min(MAX_SCORE, f1))
+        
+        # ====== DISCOVERY RATE: correct_discoveries / total ======
+        discovery_rate = discovered_correct / total_pii
+        discovery_rate = max(MIN_SCORE, min(MAX_SCORE, discovery_rate))
+        
+        # ====== EFFICIENCY: steps_saved / steps_budget ======
+        steps_saved = max(0, steps_budget - steps_used)  # Always non-negative
+        if steps_budget > 0:
+            efficiency = steps_saved / steps_budget
+        else:
+            efficiency = MIN_SCORE
+        efficiency = max(MIN_SCORE, min(MAX_SCORE, efficiency))
+        
+        # ====== COMPONENT SCORES (for breakdown, all bounded) ======
+        f1_component = max(MIN_SCORE, min(MAX_SCORE, f1 * 0.70))
+        discovery_component = max(MIN_SCORE, min(MAX_SCORE, discovery_rate * 0.20))
+        recall_component = max(MIN_SCORE, min(MAX_SCORE, recall * 0.10))
+        efficiency_bonus = max(MIN_SCORE, min(MAX_SCORE, efficiency * 0.05))
+        
+        # ====== SECRET PENALTY (internal deduction only, NOT returned as score) ======
+        # Negative penalty for missed secrets: -0.20 per secret missed (reduced from -0.30 for less harsh impact)
+        secret_penalty = -0.20 * secrets_missed
+        
+        # ====== TOTAL SCORE: sum of all components + penalty ======
+        # Raw combination
         raw_score = f1_component + discovery_component + recall_component + efficiency_bonus + secret_penalty
-
-        # Ensure total_score is strictly bounded
+        
+        # Clamp final score to valid range
         total_score = max(MIN_SCORE, min(MAX_SCORE, raw_score))
-
-        # Letter grade based on bounded score
+        
+        # ====== LETTER GRADE ======
         grade = InvestigationGrader._letter_grade(total_score)
-
+        
+        # ====== BUILD RESULT ======
+        # CRITICAL: Only return bounded scores and raw counts.
+        # No negative values. No MAX_SCORE for empty cases.
         return {
-            # Core metrics - strictly bounded
-            "precision": max(MIN_SCORE, min(MAX_SCORE, precision)),
-            "recall": max(MIN_SCORE, min(MAX_SCORE, recall)),
-            "f1_score": max(MIN_SCORE, min(MAX_SCORE, f1)),
-            # Discovery
-            "discovery_rate": max(MIN_SCORE, min(MAX_SCORE, discovery_rate)),
+            # ===== SCORE FIELDS (all strictly bounded) =====
+            "precision": precision,
+            "recall": recall,
+            "f1_score": f1,
+            "discovery_rate": discovery_rate,
+            "efficiency": efficiency,
+            "f1_component": f1_component,
+            "discovery_component": discovery_component,
+            "recall_component": recall_component,
+            "efficiency_bonus": efficiency_bonus,
+            "total_score": total_score,
+            
+            # ===== NON-SCORE FIELDS (counts, not bounded as scores) =====
             "discovered_count": discovered_correct,
-            # Efficiency
-            "efficiency": max(MIN_SCORE, min(MAX_SCORE, efficiency)),
             "steps_used": steps_used,
             "steps_budget": steps_budget,
             "steps_saved": steps_saved,
-            # Secrets
             "secrets_found": secrets_found,
             "secrets_missed": secrets_missed,
             "secrets_total": secrets_total,
-            # Counts
             "true_positives": true_positives,
             "false_positives": false_positives,
             "false_negatives": false_negatives,
-            "total_pii": total,
-            # Score components - only actual scores clamped
-            "f1_component": max(MIN_SCORE, min(MAX_SCORE, f1_component)),
-            "discovery_component": max(MIN_SCORE, min(MAX_SCORE, discovery_component)),
-            "recall_component": max(MIN_SCORE, min(MAX_SCORE, recall_component)),
-            "efficiency_bonus": max(MIN_SCORE, min(MAX_SCORE, efficiency_bonus)),
-            # Final
-            "total_score": total_score,
+            "total_pii": total_pii,
+            
+            # ===== METADATA =====
             "grade": grade,
         }
 
