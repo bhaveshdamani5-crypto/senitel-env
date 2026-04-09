@@ -47,7 +47,7 @@ except Exception as e:
 
 # Import environment
 sys.path.insert(0, os.path.dirname(__file__))
-from env import SentinelEnvironment, EPSILON
+from env import SentinelEnvironment
 from models import AgentAction, ActionType, Difficulty
 
 
@@ -142,7 +142,7 @@ def _classify_entity(entity: str) -> str:
 
 
 def _strict_reward_value(value: float) -> float:
-    return max(EPSILON, min(1.0 - EPSILON, value))
+    return max(0.01, min(0.99, float(value)))
 
 # ============================================================================
 # LLM-GUIDED INVESTIGATION (Primary mode)
@@ -253,7 +253,7 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
         result = env.step(AgentAction(action_type=ActionType.SCAN))
         obs = result.observation
         episode_rewards.append(_strict_reward_value(result.reward.total_reward))
-        print(f"[STEP] step={step_num} action=scan reward={result.reward.total_reward:.2f} done=false error=null")
+        print(f"[STEP] step={step_num} action=scan reward={_strict_reward_value(result.reward.total_reward):.2f} done=false error=null")
 
         while obs.steps_remaining > 0 and not (result.terminated or result.truncated):
             if obs.steps_remaining <= 1:
@@ -261,7 +261,7 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
                 result = env.step(AgentAction(action_type=ActionType.SUBMIT))
                 obs = result.observation
                 episode_rewards.append(_strict_reward_value(result.reward.total_reward))
-                print(f"[STEP] step={step_num} action=submit reward={result.reward.total_reward:.2f} done=true error=null")
+                print(f"[STEP] step={step_num} action=submit reward={_strict_reward_value(result.reward.total_reward):.2f} done=true error=null")
                 break
 
             all_found_pii = [{"original": e, "type": _classify_entity(e)} for e in obs.discovered_entities]
@@ -285,7 +285,7 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
                 result = env.step(AgentAction(action_type=ActionType.SCAN))
                 obs = result.observation
                 episode_rewards.append(_strict_reward_value(result.reward.total_reward))
-                print(f"[STEP] step={step_num} action=scan reward={result.reward.total_reward:.2f} done=false error=null")
+                print(f"[STEP] step={step_num} action=scan reward={_strict_reward_value(result.reward.total_reward):.2f} done=false error=null")
                 continue
 
             if act == "investigate":
@@ -296,14 +296,14 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
                     result = env.step(AgentAction(action_type=ActionType.SCAN))
                     obs = result.observation
                     episode_rewards.append(_strict_reward_value(result.reward.total_reward))
-                    print(f"[STEP] step={step_num} action=scan reward={result.reward.total_reward:.2f} done=false error=null")
+                    print(f"[STEP] step={step_num} action=scan reward={_strict_reward_value(result.reward.total_reward):.2f} done=false error=null")
                     continue
                 investigated.add(target)
                 step_num += 1
                 result = env.step(AgentAction(action_type=ActionType.INVESTIGATE, target_entity=target))
                 obs = result.observation
                 episode_rewards.append(_strict_reward_value(result.reward.total_reward))
-                print(f"[STEP] step={step_num} action=investigate reward={result.reward.total_reward:.2f} done=false error=null")
+                print(f"[STEP] step={step_num} action=investigate reward={_strict_reward_value(result.reward.total_reward):.2f} done=false error=null")
                 continue
 
             if act == "redact":
@@ -311,7 +311,7 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
                 result = env.step(AgentAction(action_type=ActionType.REDACT, redactions=all_found_pii))
                 obs = result.observation
                 episode_rewards.append(_strict_reward_value(result.reward.total_reward))
-                print(f"[STEP] step={step_num} action=redact reward={result.reward.total_reward:.2f} done=false error=null")
+                print(f"[STEP] step={step_num} action=redact reward={_strict_reward_value(result.reward.total_reward):.2f} done=false error=null")
                 continue
 
             if act == "submit":
@@ -319,24 +319,24 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
                 result = env.step(AgentAction(action_type=ActionType.SUBMIT))
                 obs = result.observation
                 episode_rewards.append(_strict_reward_value(result.reward.total_reward))
-                print(f"[STEP] step={step_num} action=submit reward={result.reward.total_reward:.2f} done=true error=null")
+                print(f"[STEP] step={step_num} action=submit reward={_strict_reward_value(result.reward.total_reward):.2f} done=true error=null")
                 break
 
         # Final output
         success = result.reward.metrics.get("f1_score", 0) >= 0.70 if result.reward.metrics else False
         rewards_str = ",".join(f"{r:.2f}" for r in episode_rewards) if episode_rewards else ""
 
-        raw_final_score = result.reward.metrics.get("total_score", EPSILON)
-        total_score = max(EPSILON, min(1.0 - EPSILON, raw_final_score))
+        raw_final_score = result.reward.metrics.get("total_score", 0.01)
+        total_score = max(0.01, min(0.99, float(raw_final_score)))
 
-        print(f"[END] success={'true' if success else 'false'} steps={step_num} rewards={rewards_str}")
+        print(f"[END] task=investigation score={total_score:.2f} steps={step_num} success={'true' if success else 'false'} rewards={rewards_str}", flush=True)
 
         return {
             "difficulty": difficulty,
             "steps": step_num,
             "total_score": total_score,
-            "f1_score": max(EPSILON, min(1.0 - EPSILON, result.reward.metrics.get("f1_score", EPSILON))),
-            "discovery_rate": max(EPSILON, min(1.0 - EPSILON, result.reward.metrics.get("discovery_rate", EPSILON))),
+            "f1_score": max(0.01, min(0.99, float(result.reward.metrics.get("f1_score", 0.01)))),
+            "discovery_rate": max(0.01, min(0.99, float(result.reward.metrics.get("discovery_rate", 0.01)))),
             "success": success,
             "rewards": episode_rewards,
             "metrics": result.reward.metrics,
@@ -345,18 +345,19 @@ def run_episode(difficulty: str = "medium", seed: Optional[int] = None) -> Dict:
     except Exception as e:
         # Ensure [END] is printed even on exception
         rewards_str = ",".join(f"{r:.2f}" for r in episode_rewards) if episode_rewards else ""
-        print(f"[END] success=false steps={step_num} rewards={rewards_str}")
+        fallback_score = max(0.01, min(0.99, float(sum(episode_rewards) / len(episode_rewards)))) if episode_rewards else 0.01
+        print(f"[END] task=investigation score={fallback_score:.2f} steps={step_num} success=false rewards={rewards_str}", flush=True)
         print(f"[ERROR] Episode crashed: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
         # Return a default failed result so benchmarking can continue
-        fallback_total = max(EPSILON, min(1.0 - EPSILON, sum(episode_rewards))) if episode_rewards else EPSILON
+        fallback_total = max(0.01, min(0.99, float(sum(episode_rewards)))) if episode_rewards else 0.01
         return {
             "difficulty": difficulty,
             "steps": step_num,
             "total_score": fallback_total,
-            "f1_score": EPSILON,
-            "discovery_rate": EPSILON,
+            "f1_score": 0.01,
+            "discovery_rate": 0.01,
             "success": False,
             "rewards": episode_rewards,
             "metrics": {},
@@ -405,9 +406,9 @@ def main():
                     results.append({
                         "difficulty": diff,
                         "steps": 0,
-                        "total_score": EPSILON,
-                        "f1_score": EPSILON,
-                        "discovery_rate": EPSILON,
+                        "total_score": 0.01,
+                        "f1_score": 0.01,
+                        "discovery_rate": 0.01,
                         "success": False,
                         "rewards": [],
                         "metrics": {},
